@@ -111,32 +111,28 @@ def update_call_status_info(**kwargs):
 		args = frappe._dict(kwargs)
 		parent_call_sid = args.ParentCallSid
 		update_call_log(parent_call_sid, status=args.CallStatus)
+
+		call_info = {
+			'ParentCallSid': args.ParentCallSid,
+			'CallSid': args.CallSid,
+			'CallStatus': args.CallStatus,
+			'CallDuration': args.CallDuration,
+			'From': args.From,
+			'To': args.To,
+		}
+
+		client = Twilio.get_twilio_client()
+		client.calls(args.ParentCallSid).user_defined_messages.create(
+			content=json.dumps(call_info)
+		)
 	except:
 		frappe.log_error(title=_("Failed to update Twilio call status"))
-
-@frappe.whitelist(allow_guest=True)
-def get_call_info(**kwargs):
-	"""This is a webhook called when the outgoing call status changes.
-		E.g. 'initiated' 'ringing', 'in-progress', 'completed' etc.
-	"""
-	args = frappe._dict(kwargs)
-	call_info = {
-		'ParentCallSid': args.ParentCallSid,
-		'CallSid': args.CallSid,
-		'CallStatus': args.CallStatus,
-		'CallDuration': args.CallDuration,
-		'From': args.From,
-		'To': args.To,
-	}
-
-	client = Twilio.get_twilio_client()
-	client.calls(args.ParentCallSid).user_defined_messages.create(
-		content=json.dumps(call_info)
-	)
 
 def get_datetime_from_timestamp(timestamp):
 	from datetime import datetime
 	from pytz import timezone
+
+	if not timestamp: return None
 
 	datetime_utc_tz_str = timestamp.strftime('%Y-%m-%d %H:%M:%S%z')
 	datetime_utc_tz = datetime.strptime(datetime_utc_tz_str, '%Y-%m-%d %H:%M:%S%z')
@@ -152,7 +148,9 @@ def add_note_to_call_log(call_sid, note):
 	if not twilio: return
 
 	call_details = twilio.get_call_info(call_sid)
-	frappe.db.set_value("CRM Call Log", call_details.parent_call_sid, "note", note)
+	sid = call_sid if call_details.direction == 'inbound' else call_details.parent_call_sid
+
+	frappe.db.set_value("CRM Call Log", sid, "note", note)
 	frappe.db.commit()
 
 def get_lead_or_deal_from_number(call):

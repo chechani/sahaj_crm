@@ -69,8 +69,8 @@ class CRMLead(Document):
 		if not agent:
 			return
 
-		if self.get("_assign"):
-			assignees = json.loads(self._assign)
+		assignees = self.get_assigned_users()
+		if assignees:
 			for assignee in assignees:
 				if agent == assignee:
 					# the agent is already set as an assignee
@@ -167,6 +167,7 @@ class CRMLead(Document):
 				"organization": organization,
 				"deal_owner": self.lead_owner,
 				"source": self.source,
+				"lead_name": self.lead_name,
 				"contacts": [{"contact": contact}],
 			}
 		)

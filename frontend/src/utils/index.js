@@ -116,7 +116,7 @@ export function validateEmail(email) {
 
 export function setupAssignees(data) {
   let { getUser } = usersStore()
-  let assignees = JSON.parse(data._assign) || []
+  let assignees = data._assign || []
   data._assignedTo = assignees.map((user) => ({
     name: user,
     image: getUser(user).user_image,
@@ -129,4 +129,13 @@ export function setupCustomActions(data, obj) {
   let script = new Function(data._form_script + '\nreturn setupForm')()
   let formScript = script(obj)
   data._customActions = formScript?.actions || []
+}
+
+export function errorMessage(title, message) {
+  createToast({
+    title: title || 'Error',
+    text: message,
+    icon: 'x',
+    iconClasses: 'text-red-600',
+  })
 }

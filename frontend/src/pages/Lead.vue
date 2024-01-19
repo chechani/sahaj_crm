@@ -42,6 +42,7 @@
   <div v-if="lead?.data" class="flex h-full overflow-hidden">
     <Tabs v-model="tabIndex" v-slot="{ tab }" :tabs="tabs">
       <Activities
+        ref="activities"
         doctype="CRM Lead"
         :title="tab.label"
         v-model:reload="reload"
@@ -112,19 +113,35 @@
                 <Tooltip text="Make a call...">
                   <Button
                     class="h-7 w-7"
-                    @click="() => makeCall(lead.data.mobile_no)"
+                    @click="
+                      () =>
+                        lead.data.mobile_no
+                          ? makeCall(lead.data.mobile_no)
+                          : errorMessage('No phone number set')
+                    "
                   >
                     <PhoneIcon class="h-4 w-4" />
                   </Button>
                 </Tooltip>
                 <Button class="h-7 w-7">
-                  <EmailIcon class="h-4 w-4" />
+                  <EmailIcon
+                    class="h-4 w-4"
+                    @click="
+                      lead.data.email
+                        ? openEmailBox()
+                        : errorMessage('No email set')
+                    "
+                  />
                 </Button>
                 <Tooltip text="Go to website...">
                   <Button class="h-7 w-7">
                     <LinkIcon
                       class="h-4 w-4"
-                      @click="openWebsite(lead.data.website)"
+                      @click="
+                        lead.data.website
+                          ? openWebsite(lead.data.website)
+                          : errorMessage('No website set')
+                      "
                     />
                   </Button>
                 </Tooltip>
@@ -256,6 +273,7 @@ import {
   createToast,
   setupAssignees,
   setupCustomActions,
+  errorMessage,
 } from '@/utils'
 import { globalStore } from '@/stores/global'
 import { contactsStore } from '@/stores/contacts'
@@ -300,6 +318,7 @@ const lead = createResource({
       $dialog,
       router,
       updateField,
+      createToast,
       deleteDoc: deleteLead,
       call,
     })
@@ -495,5 +514,11 @@ async function convertToDeal(updated) {
       router.push({ name: 'Deal', params: { dealId: deal } })
     }
   }
+}
+
+const activities = ref(null)
+
+function openEmailBox() {
+  activities.value.emailBox.show = true
 }
 </script>
