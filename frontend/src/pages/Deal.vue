@@ -163,7 +163,7 @@
               />
               <div v-else>
                 <div
-                  v-if="section.contacts"
+                  v-if="section.contacts.length"
                   v-for="(contact, i) in section.contacts"
                   :key="contact.name"
                 >
@@ -316,6 +316,7 @@ import { globalStore } from '@/stores/global'
 import { contactsStore } from '@/stores/contacts'
 import { organizationsStore } from '@/stores/organizations'
 import { statusesStore } from '@/stores/statuses'
+import { viewsStore } from '@/stores/views'
 import {
   createResource,
   Dropdown,
@@ -332,6 +333,7 @@ const { $dialog, makeCall } = globalStore()
 const { getContactByName, contacts } = contactsStore()
 const { organizations, getOrganization } = organizationsStore()
 const { statusOptions, getDealStatus } = statusesStore()
+const { getDefaultView } = viewsStore()
 const router = useRouter()
 
 const props = defineProps({
@@ -420,7 +422,12 @@ function validateRequired(fieldname, value) {
 }
 
 const breadcrumbs = computed(() => {
-  let items = [{ label: 'Deals', route: { name: 'Deals' } }]
+  let defaultView = getDefaultView()
+  let route = { name: 'Deals' }
+  if (defaultView?.route_name == 'Deals' && defaultView?.is_view) {
+    route = { name: 'Deals', query: { view: defaultView.name } }
+  }
+  let items = [{ label: 'Deals', route: route }]
   items.push({
     label: organization.value?.name,
     route: { name: 'Deal', params: { dealId: deal.data.name } },
@@ -460,42 +467,40 @@ const detailSections = computed(() => {
 
 function getParsedFields(sections, contacts) {
   sections.forEach((section) => {
-    section.fields.forEach((field) => {
-      if (
-        !deal.data.organization &&
-        ['website', 'territory', 'annual_revenue'].includes(field.name)
-      ) {
-        field.hidden = true
-      }
-      if (field.name == 'organization') {
-        field.create = (value, close) => {
-          _organization.value.organization_name = value
-          showOrganizationModal.value = true
-          close()
+    if (section.name == 'contacts_tab') {
+      delete section.fields
+      section.contacts =
+        contacts?.map((contact) => {
+          return {
+            name: contact.contact,
+            is_primary: contact.is_primary,
+            opened: false,
+          }
+        }) || []
+    } else {
+      section.fields.forEach((field) => {
+        if (
+          !deal.data.organization &&
+          ['website', 'territory', 'annual_revenue'].includes(field.name)
+        ) {
+          field.hidden = true
         }
-        field.link = (org) =>
-          router.push({
-            name: 'Organization',
-            params: { organizationId: org },
-          })
-      }
-    })
+        if (field.name == 'organization') {
+          field.create = (value, close) => {
+            _organization.value.organization_name = value
+            showOrganizationModal.value = true
+            close()
+          }
+          field.link = (org) =>
+            router.push({
+              name: 'Organization',
+              params: { organizationId: org },
+            })
+        }
+      })
+    }
   })
-
-  let contactSection = {
-    label: 'Contacts',
-    opened: true,
-    contacts:
-      contacts?.map((contact) => {
-        return {
-          name: contact.contact,
-          is_primary: contact.is_primary,
-          opened: false,
-        }
-      }) || [],
-  }
-
-  return [...sections, contactSection]
+  return sections
 }
 
 const showContactModal = ref(false)

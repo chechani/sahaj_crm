@@ -3,31 +3,53 @@ from frappe.model.document import get_controller
 from frappe.model import no_value_fields
 from pypika import Criterion
 
+from crm.api.views import get_views
+
 
 @frappe.whitelist()
 def sort_options(doctype: str):
-	c = get_controller(doctype)
+	fields = frappe.get_meta(doctype).fields
+	fields = [field for field in fields if field.fieldtype not in no_value_fields]
+	fields = [
+		{
+			"label": field.label,
+			"value": field.fieldname,
+		}
+		for field in fields
+		if field.label and field.fieldname
+	]
 
-	if not hasattr(c, "sort_options"):
-		return []
+	standard_fields = [
+		{"label": "Name", "value": "name"},
+		{"label": "Created On", "value": "creation"},
+		{"label": "Last Modified", "value": "modified"},
+		{"label": "Modified By", "value": "modified_by"},
+		{"label": "Owner", "value": "owner"},
+	]
 
-	return c.sort_options()
+	for field in standard_fields:
+		fields.append(field)
+
+	return fields
 
 
 @frappe.whitelist()
 def get_filterable_fields(doctype: str):
-	DocField = frappe.qb.DocType("DocField")
 	allowed_fieldtypes = [
 		"Check",
 		"Data",
 		"Float",
 		"Int",
+		"Currency",
 		"Link",
 		"Long Text",
 		"Select",
 		"Small Text",
 		"Text Editor",
 		"Text",
+		"Duration",
+		"Date",
+		"Datetime",
 	]
 
 	c = get_controller(doctype)
@@ -35,7 +57,53 @@ def get_filterable_fields(doctype: str):
 	if hasattr(c, "get_non_filterable_fields"):
 		restricted_fields = c.get_non_filterable_fields()
 
-	from_doc_fields = (
+	res = []
+
+	# append DocFields
+	DocField = frappe.qb.DocType("DocField")
+	doc_fields = get_fields_meta(DocField, doctype, allowed_fieldtypes, restricted_fields)
+	res.extend(doc_fields)
+
+	# append Custom Fields
+	CustomField = frappe.qb.DocType("Custom Field")
+	custom_fields = get_fields_meta(CustomField, doctype, allowed_fieldtypes, restricted_fields)
+	res.extend(custom_fields)
+
+	# append standard fields (getting error when using frappe.model.std_fields)
+	standard_fields = [
+		{"fieldname": "name", "fieldtype": "Link", "label": "ID", "options": doctype},
+		{
+			"fieldname": "owner",
+			"fieldtype": "Link",
+			"label": "Created By",
+			"options": "User"
+		},
+		{
+			"fieldname": "modified_by",
+			"fieldtype": "Link",
+			"label": "Last Updated By",
+			"options": "User",
+		},
+		{"fieldname": "_user_tags", "fieldtype": "Data", "label": "Tags"},
+		{"fieldname": "_liked_by", "fieldtype": "Data", "label": "Liked By"},
+		{"fieldname": "_comments", "fieldtype": "Text", "label": "Comments"},
+		{"fieldname": "_assign", "fieldtype": "Text", "label": "Assigned To"},
+		{"fieldname": "creation", "fieldtype": "Datetime", "label": "Created On"},
+		{"fieldname": "modified", "fieldtype": "Datetime", "label": "Last Updated On"},
+	]
+	for field in standard_fields:
+		if (
+			field.get("fieldname") not in restricted_fields and
+			field.get("fieldtype") in allowed_fieldtypes
+		):
+			field["name"] = field.get("fieldname")
+			res.append(field)
+
+	return res
+
+def get_fields_meta(DocField, doctype, allowed_fieldtypes, restricted_fields):
+	parent = "parent" if DocField._table_name == "tabDocField" else "dt"
+	return (
 		frappe.qb.from_(DocField)
 		.select(
 			DocField.fieldname,
@@ -44,16 +112,12 @@ def get_filterable_fields(doctype: str):
 			DocField.name,
 			DocField.options,
 		)
-		.where(DocField.parent == doctype)
+		.where(DocField[parent] == doctype)
 		.where(DocField.hidden == False)
 		.where(Criterion.any([DocField.fieldtype == i for i in allowed_fieldtypes]))
 		.where(Criterion.all([DocField.fieldname != i for i in restricted_fields]))
 		.run(as_dict=True)
 	)
-	res = []
-	res.extend(from_doc_fields)
-	return res
-
 
 @frappe.whitelist()
 def get_list_data(
@@ -69,6 +133,18 @@ def get_list_data(
 ):
 	custom_view = False
 	filters = frappe._dict(filters)
+
+	for key in filters:
+		value = filters[key]
+		if isinstance(value, list):
+			if "@me" in value:
+				value[value.index("@me")] = frappe.session.user
+			elif "%@me%" in value:
+				index = [i for i, v in enumerate(value) if v == "%@me%"]
+				for i in index:
+					value[i] = "%" + frappe.session.user + "%"
+		elif value == "@me":
+			filters[key] = frappe.session.user
 
 	if default_filters:
 		default_filters = frappe.parse_json(default_filters)
@@ -96,11 +172,11 @@ def get_list_data(
 		rows = frappe.parse_json(list_view_settings.rows)
 		is_default = False
 	elif not custom_view or is_default:
-		list = get_controller(doctype)
+		_list = get_controller(doctype)
 
-		if hasattr(list, "default_list_data"):
-			columns = list.default_list_data().get("columns")
-			rows = list.default_list_data().get("rows")
+		if hasattr(_list, "default_list_data"):
+			columns = _list.default_list_data().get("columns")
+			rows = _list.default_list_data().get("rows")
 
 	# check if rows has all keys from columns if not add them
 	for column in columns:
@@ -159,18 +235,10 @@ def get_list_data(
 		"page_length": page_length,
 		"page_length_count": page_length_count,
 		"is_default": is_default,
-		"views": get_views(doctype),
+		"views": get_views(doctype, is_view=True),
 		"total_count": frappe.client.get_count(doctype, filters=filters),
 		"row_count": len(data),
 	}
-
-def get_views(doctype):
-	views = frappe.get_all(
-		"CRM View Settings",
-		fields=["*"],
-		filters={"dt": doctype, "user": frappe.session.user}
-	)
-	return views
 
 
 def get_doctype_fields(doctype):
@@ -201,6 +269,7 @@ def get_doctype_fields(doctype):
 			last_section = field.fieldname
 			sections[field.fieldname] = {
 				"label": field.label,
+				"name": field.fieldname,
 				"opened": True,
 				"fields": [],
 			}

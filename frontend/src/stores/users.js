@@ -30,7 +30,6 @@ export const usersStore = defineStore('crm-users', () => {
       email = session.user
     }
     if (!usersByName[email]) {
-      users.reload()
       usersByName[email] = {
         name: email,
         email: email,
@@ -42,8 +41,13 @@ export const usersStore = defineStore('crm-users', () => {
     return usersByName[email]
   }
 
+  function isManager(email) {
+    return getUser(email).is_manager
+  }
+
   return {
     users,
     getUser,
+    isManager,
   }
 })

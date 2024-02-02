@@ -383,14 +383,27 @@
                 </Button>
               </div>
             </div>
+            <div class="text-sm leading-5 text-gray-600">
+              {{ activity.data.subject }}
+            </div>
             <div class="mb-3 text-sm leading-5 text-gray-600">
-              <span class="mr-1">TO:</span>
+              <span class="mr-1 text-2xs font-bold text-gray-500">TO:</span>
               <span>{{ activity.data.recipients }}</span>
               <span v-if="activity.data.cc">, </span>
-              <span v-if="activity.data.cc" class="mr-1">CC:</span>
+              <span
+                v-if="activity.data.cc"
+                class="mr-1 text-2xs font-bold text-gray-500"
+              >
+                CC:
+              </span>
               <span v-if="activity.data.cc">{{ activity.data.cc }}</span>
               <span v-if="activity.data.bcc">, </span>
-              <span v-if="activity.data.bcc" class="mr-1">BCC:</span>
+              <span
+                v-if="activity.data.bcc"
+                class="mr-1 text-2xs font-bold text-gray-500"
+              >
+                BCC:
+              </span>
               <span v-if="activity.data.bcc">{{ activity.data.bcc }}</span>
             </div>
             <span class="prose-f" v-html="activity.data.content" />
@@ -403,6 +416,37 @@
               />
             </div>
           </div>
+        </div>
+        <div
+          class="mb-4"
+          :id="activity.name"
+          v-else-if="activity.activity_type == 'comment'"
+        >
+          <div
+            class="mb-0.5 flex items-start justify-stretch gap-2 py-1.5 text-base"
+          >
+            <div class="inline-flex flex-wrap gap-1 text-gray-600">
+              <span class="font-medium text-gray-800">
+                {{ activity.owner_name }}
+              </span>
+              <span>added a</span>
+              <span class="max-w-xs truncate font-medium text-gray-800">
+                comment
+              </span>
+            </div>
+            <div class="ml-auto whitespace-nowrap">
+              <Tooltip
+                :text="dateFormat(activity.creation, dateTooltipFormat)"
+                class="text-gray-600"
+              >
+                {{ timeAgo(activity.creation) }}
+              </Tooltip>
+            </div>
+          </div>
+          <div
+            class="cursor-pointer rounded bg-gray-50 px-4 py-3 text-base leading-6 transition-all duration-300 ease-in-out"
+            v-html="activity.content"
+          />
         </div>
         <div
           v-else-if="
@@ -692,6 +736,7 @@ import PlayIcon from '@/components/Icons/PlayIcon.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
 import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import DotIcon from '@/components/Icons/DotIcon.vue'
+import CommentIcon from '@/components/Icons/CommentIcon.vue'
 import EmailAtIcon from '@/components/Icons/EmailAtIcon.vue'
 import InboundCallIcon from '@/components/Icons/InboundCallIcon.vue'
 import OutboundCallIcon from '@/components/Icons/OutboundCallIcon.vue'
@@ -724,6 +769,7 @@ import {
 } from 'frappe-ui'
 import { useElementVisibility } from '@vueuse/core'
 import { ref, computed, h, defineModel, markRaw, watch, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 
 const { makeCall } = globalStore()
 const { getUser } = usersStore()
@@ -949,6 +995,9 @@ function timelineIcon(activity_type, is_lead) {
     case 'deal':
       icon = DealsIcon
       break
+    case 'comment':
+      icon = CommentIcon
+      break
     case 'communication':
       icon = EmailAtIcon
       break
@@ -1062,11 +1111,14 @@ watch([reload, reload_email], ([reload_value, reload_email_value]) => {
   }
 })
 
-function scroll(el) {
+function scroll(hash) {
   setTimeout(() => {
-    if (!el) {
+    let el
+    if (!hash) {
       let e = document.getElementsByClassName('activity')
       el = e[e.length - 1]
+    } else {
+      el = document.getElementById(hash)
     }
     if (el && !useElementVisibility(el).value) {
       el.scrollIntoView({ behavior: 'smooth' })
@@ -1077,7 +1129,12 @@ function scroll(el) {
 
 defineExpose({ emailBox })
 
-nextTick(() => scroll())
+const route = useRoute()
+
+nextTick(() => {
+  const hash = route.hash.slice(1) || null
+  scroll(hash)
+})
 </script>
 
 <style scoped>

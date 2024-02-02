@@ -16,9 +16,19 @@
           </Button>
         </template>
       </Dropdown>
+      <Dropdown :options="viewActions">
+        <template #default>
+          <Button>
+            <FeatherIcon name="more-horizontal" class="h-4 w-4" />
+          </Button>
+        </template>
+      </Dropdown>
     </div>
     <div class="flex items-center gap-2">
-      <div v-if="viewUpdated" class="flex items-center gap-2 border-r pr-2">
+      <div
+        v-if="viewUpdated && (!view.public || isManager())"
+        class="flex items-center gap-2 border-r pr-2"
+      >
         <Button label="Cancel" @click="cancelChanges" />
         <Button
           :label="view?.name ? 'Save Changes' : 'Create View'"
@@ -38,13 +48,11 @@
           :doctype="doctype"
           @update="(isDefault) => updateColumns(isDefault)"
         />
-        <Dropdown :options="viewActions">
-          <template #default>
-            <Button>
-              <FeatherIcon name="more-horizontal" class="h-4 w-4" />
-            </Button>
+        <Button label="Refresh" @click="reload()" :loading="isLoading">
+          <template #icon>
+            <RefreshIcon class="h-4 w-4" />
           </template>
-        </Dropdown>
+        </Button>
       </div>
     </div>
   </div>
@@ -66,6 +74,7 @@
   />
 </template>
 <script setup>
+import RefreshIcon from '@/components/Icons/RefreshIcon.vue'
 import EditIcon from '@/components/Icons/EditIcon.vue'
 import DuplicateIcon from '@/components/Icons/DuplicateIcon.vue'
 import PinIcon from '@/components/Icons/PinIcon.vue'
@@ -74,10 +83,12 @@ import ViewModal from '@/components/Modals/ViewModal.vue'
 import SortBy from '@/components/SortBy.vue'
 import Filter from '@/components/Filter.vue'
 import ColumnSettings from '@/components/ColumnSettings.vue'
+import { createToast } from '@/utils'
 import { globalStore } from '@/stores/global'
 import { viewsStore } from '@/stores/views'
+import { usersStore } from '@/stores/users'
 import { useDebounceFn } from '@vueuse/core'
-import { createResource, Dropdown, call } from 'frappe-ui'
+import { createResource, Dropdown, call, FeatherIcon } from 'frappe-ui'
 import { computed, ref, defineModel, onMounted, watch, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
@@ -93,7 +104,8 @@ const props = defineProps({
 })
 
 const { $dialog } = globalStore()
-const { reload: reloadView, getView } = viewsStore()
+const { reload: reloadView, getView, getDefaultView } = viewsStore()
+const { isManager } = usersStore()
 
 const list = defineModel()
 const loadMore = defineModel('loadMore')
@@ -123,6 +135,7 @@ const view = ref({
   rows: '',
   load_default_columns: false,
   pinned: false,
+  public: false,
 })
 
 const pageLength = computed(() => list.value?.data?.page_length)
@@ -159,6 +172,7 @@ function getParams() {
       route_name: _view.route_name,
       load_default_columns: _view.row,
       pinned: _view.pinned,
+      public: _view.public,
     }
   } else {
     view.value = {
@@ -171,6 +185,7 @@ function getParams() {
       route_name: '',
       load_default_columns: true,
       pinned: false,
+      public: false,
     }
   }
 
@@ -212,6 +227,8 @@ onMounted(() => {
   useDebounceFn(() => reload(), 100)()
 })
 
+const isLoading = computed(() => list.value?.loading)
+
 function reload() {
   list.value.params = getParams()
   list.value.reload()
@@ -249,8 +266,15 @@ const viewsDropdownOptions = computed(() => {
         router.push({ ...route, query: { view: view.name } })
       }
     })
-    let savedViews = list.value.data.views.filter((v) => !v.pinned)
+    let publicViews = list.value.data.views.filter((v) => v.public)
+    let savedViews = list.value.data.views.filter((v) => !v.pinned && !v.public)
     let pinnedViews = list.value.data.views.filter((v) => v.pinned)
+
+    publicViews.length &&
+      _views.push({
+        group: 'Public Views',
+        items: publicViews,
+      })
 
     savedViews.length &&
       _views.push({
@@ -338,7 +362,21 @@ const viewActions = computed(() => {
     },
   ]
 
-  if (route.query.view) {
+  let defaultView = getDefaultView()
+  if (
+    !defaultView ||
+    (route.query.view && route.query.view != defaultView.name) ||
+    (!route.query.view &&
+      (defaultView.route_name != route.name || defaultView.is_view))
+  ) {
+    actions[0].items.push({
+      label: 'Make Default',
+      icon: () => h(FeatherIcon, { name: 'star', class: 'h-4 w-4' }),
+      onClick: () => makeDefault(),
+    })
+  }
+
+  if (route.query.view && (!view.value.public || isManager())) {
     actions[0].items.push(
       {
         label: 'Rename',
@@ -352,6 +390,18 @@ const viewActions = computed(() => {
         onClick: () => pinView(),
       }
     )
+
+    if (route.query.view && isManager()) {
+      actions[0].items.push({
+        label: view.value.public ? 'Make Private' : 'Make Public',
+        icon: () =>
+          h(FeatherIcon, {
+            name: view.value.public ? 'lock' : 'unlock',
+            class: 'h-4 w-4',
+          }),
+        onClick: () => publicView(),
+      })
+    }
 
     actions.push({
       group: 'Delete View',
@@ -381,6 +431,21 @@ const viewActions = computed(() => {
   return actions
 })
 
+function makeDefault() {
+  call('crm.fcrm.doctype.crm_view_settings.crm_view_settings.make_default', {
+    name: route.query.view || '',
+    doctype: props.doctype,
+    route_name: route.name,
+  }).then(() => {
+    createToast({
+      title: 'Default View Set',
+      icon: 'check',
+      iconClasses: 'text-green-600',
+    })
+    reloadView()
+  })
+}
+
 function duplicateView() {
   view.value.name = ''
   view.value.label = getView(route.query.view).label + ' New'
@@ -391,6 +456,16 @@ function renameView() {
   view.value.name = route.query.view
   view.value.label = getView(route.query.view).label
   showViewModal.value = true
+}
+
+function publicView() {
+  call('crm.fcrm.doctype.crm_view_settings.crm_view_settings.public', {
+    name: route.query.view,
+    value: !view.value.public,
+  }).then(() => {
+    view.value.public = !view.value.public
+    reloadView()
+  })
 }
 
 function pinView() {

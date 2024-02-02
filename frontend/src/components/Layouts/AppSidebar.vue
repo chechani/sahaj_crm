@@ -1,54 +1,79 @@
 <template>
   <div
-    class="flex h-full flex-col justify-between transition-all duration-300 ease-in-out"
+    class="relative flex h-full flex-col justify-between transition-all duration-300 ease-in-out"
     :class="isSidebarCollapsed ? 'w-12' : 'w-56'"
   >
-    <div class="flex flex-1 flex-col overflow-hidden">
+    <div>
       <UserDropdown class="p-2" :isCollapsed="isSidebarCollapsed" />
-      <div class="flex flex-col overflow-y-auto">
+    </div>
+    <div class="flex-1 overflow-y-auto">
+      <div class="mb-3 flex flex-col">
         <SidebarLink
-          v-for="link in links"
-          :icon="link.icon"
-          :label="link.label"
-          :to="link.to"
+          id="notifications-btn"
+          label="Notifications"
+          :icon="NotificationsIcon"
           :isCollapsed="isSidebarCollapsed"
-          class="mx-2 my-0.5"
-        />
-      </div>
-      <div
-        v-if="isSidebarCollapsed && getPinnedViews().length"
-        class="mx-2 my-2 h-1 border-b"
-      />
-      <div
-        v-if="getPinnedViews().length"
-        class="flex flex-col overflow-y-auto"
-        :class="isSidebarCollapsed ? 'mt-0' : 'mt-4'"
-      >
-        <div
-          class="h-7 px-3 text-base text-gray-600 transition-all duration-300 ease-in-out"
-          :class="
-            isSidebarCollapsed
-              ? 'ml-0 h-0 overflow-hidden opacity-0'
-              : 'ml-2 w-auto opacity-100'
-          "
+          @click="() => toggleNotificationPanel()"
+          class="relative mx-2 my-0.5"
         >
-          Pinned Views
-        </div>
-        <SidebarLink
-          v-for="pinnedView in getPinnedViews()"
-          :icon="
-            h(getIcon(pinnedView.route_name), {
-              class: 'h-4.5 w-4.5 text-gray-700',
-            })
-          "
-          :label="pinnedView.label"
-          :to="{
-            name: pinnedView.route_name,
-            query: { view: pinnedView.name },
-          }"
-          :isCollapsed="isSidebarCollapsed"
-          class="mx-2 my-0.5"
+          <template #right>
+            <Badge
+              v-if="
+                !isSidebarCollapsed &&
+                notificationsStore().unreadNotificationsCount
+              "
+              :label="notificationsStore().unreadNotificationsCount"
+              variant="subtle"
+            />
+            <div
+              v-else-if="notificationsStore().unreadNotificationsCount"
+              class="absolute z-20 top-1 -left-1.5 h-[5px] w-[5px] ring-1 ring-white translate-x-6 translate-y-1 rounded-full bg-gray-800"
+            />
+          </template>
+        </SidebarLink>
+      </div>
+      <div v-for="view in allViews" :key="view.label">
+        <div
+          v-if="!view.hideLabel && isSidebarCollapsed && view.views?.length"
+          class="mx-2 my-2 h-1 border-b"
         />
+        <Section
+          :label="view.name"
+          :hideLabel="view.hideLabel"
+          :isOpened="view.opened"
+        >
+          <template #header="{ opened, hide, toggle }">
+            <div
+              v-if="!hide"
+              class="flex cursor-pointer gap-1.5 px-1 text-sm font-medium text-gray-600 transition-all duration-300 ease-in-out"
+              :class="
+                isSidebarCollapsed
+                  ? 'ml-0 h-0 overflow-hidden opacity-0'
+                  : 'ml-2 mt-4 h-7 w-auto opacity-100'
+              "
+              @click="toggle()"
+            >
+              <FeatherIcon
+                name="chevron-right"
+                class="h-4 text-gray-900 transition-all duration-300 ease-in-out"
+                :class="{ 'rotate-90': opened }"
+              />
+              <span class="uppercase">
+                {{ view.name }}
+              </span>
+            </div>
+          </template>
+          <nav class="flex flex-col">
+            <SidebarLink
+              v-for="link in view.views"
+              :icon="link.icon"
+              :label="link.label"
+              :to="link.to"
+              :isCollapsed="isSidebarCollapsed"
+              class="mx-2 my-0.5"
+            />
+          </nav>
+        </Section>
       </div>
     </div>
     <SidebarLink
@@ -66,10 +91,13 @@
         </span>
       </template>
     </SidebarLink>
+    <Notifications />
   </div>
 </template>
 
 <script setup>
+import Section from '@/components/Section.vue'
+import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import PinIcon from '@/components/Icons/PinIcon.vue'
 import UserDropdown from '@/components/UserDropdown.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
@@ -79,12 +107,18 @@ import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import CollapseSidebar from '@/components/Icons/CollapseSidebar.vue'
+import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
 import SidebarLink from '@/components/SidebarLink.vue'
+import Notifications from '@/components/Notifications.vue'
 import { viewsStore } from '@/stores/views'
+import { notificationsStore } from '@/stores/notifications'
 import { useStorage } from '@vueuse/core'
-import { h } from 'vue'
+import { computed } from 'vue'
 
-const { getPinnedViews } = viewsStore()
+const { getPinnedViews, getPublicViews } = viewsStore()
+const { toggle: toggleNotificationPanel } = notificationsStore()
+
+const isSidebarCollapsed = useStorage('isSidebarCollapsed', false)
 
 const links = [
   {
@@ -117,7 +151,46 @@ const links = [
     icon: PhoneIcon,
     to: 'Call Logs',
   },
+  {
+    label: 'Email Templates',
+    icon: EmailIcon,
+    to: 'Email Templates',
+  },
 ]
+
+const allViews = computed(() => {
+  return [
+    {
+      name: 'All Views',
+      hideLabel: true,
+      opened: true,
+      views: links,
+    },
+    {
+      name: 'Public views',
+      opened: true,
+      views: parseView(getPublicViews()),
+    },
+    {
+      name: 'Pinned views',
+      opened: true,
+      views: parseView(getPinnedViews()),
+    },
+  ]
+})
+
+function parseView(views) {
+  return views.map((view) => {
+    return {
+      label: view.label,
+      icon: getIcon(view.route_name),
+      to: {
+        name: view.route_name,
+        query: { view: view.name },
+      },
+    }
+  })
+}
 
 function getIcon(routeName) {
   switch (routeName) {
@@ -137,6 +210,4 @@ function getIcon(routeName) {
       return PinIcon
   }
 }
-
-const isSidebarCollapsed = useStorage('sidebar_is_collapsed', false)
 </script>

@@ -61,6 +61,10 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  hideMe: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
@@ -101,19 +105,26 @@ watchDebounced(
 
 const options = createResource({
   url: 'frappe.desk.search.search_link',
-  cache: [props.doctype, text.value],
+  cache: [props.doctype, text.value, props.hideMe],
   method: 'POST',
   params: {
     txt: text.value,
     doctype: props.doctype,
   },
   transform: (data) => {
-    return data.map((option) => {
+    let allData = data.map((option) => {
       return {
         label: option.value,
         value: option.value,
       }
     })
+    if (!props.hideMe && props.doctype == 'User') {
+      allData.unshift({
+        label: '@me',
+        value: '@me',
+      })
+    }
+    return allData
   },
 })
 

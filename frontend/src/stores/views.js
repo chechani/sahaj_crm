@@ -1,28 +1,42 @@
 import { defineStore } from 'pinia'
-import { usersStore } from '@/stores/users'
-import { createListResource } from 'frappe-ui'
+import { sessionStore } from '@/stores/session'
+import { createResource } from 'frappe-ui'
 import { reactive, ref } from 'vue'
 
-export const viewsStore = defineStore('crm-views', () => {
-
-  const { getUser } = usersStore()
-
+export const viewsStore = defineStore('crm-views', (doctype) => {
   let viewsByName = reactive({})
   let pinnedViews = ref([])
+  let publicViews = ref([])
+  let defaultView = ref(null)
 
-  const views = createListResource({
-    doctype: 'CRM View Settings',
-    fields: ['*'],
-    filters: { user: getUser().email },
+  const { user } = sessionStore()
+
+  // Views
+  const views = createResource({
+    url: 'crm.api.views.get_views',
+    params: { doctype: doctype || '' },
     cache: 'crm-views',
     initialData: [],
     auto: true,
     transform(views) {
       pinnedViews.value = []
+      publicViews.value = []
       for (let view of views) {
         viewsByName[view.name] = view
         if (view.pinned) {
           pinnedViews.value?.push(view)
+        }
+        if (view.public) {
+          publicViews.value?.push(view)
+        }
+
+        if (
+          (!view.public && view.default) ||
+          (view.public &&
+            view.default &&
+            JSON.parse(view.user_list).includes(user))
+        ) {
+          defaultView.value = view
         }
       }
       return views
@@ -31,9 +45,6 @@ export const viewsStore = defineStore('crm-views', () => {
 
   function getView(view) {
     if (!view) return null
-    if (!viewsByName[view]) {
-      views.reload()
-    }
     return viewsByName[view]
   }
 
@@ -42,13 +53,24 @@ export const viewsStore = defineStore('crm-views', () => {
     return pinnedViews.value
   }
 
-  async function reload(wait = false) {
+  function getPublicViews() {
+    if (!publicViews.value?.length) return []
+    return publicViews.value
+  }
+
+  function getDefaultView() {
+    return defaultView.value
+  }
+
+  async function reload() {
     await views.reload()
   }
 
   return {
     views,
     getPinnedViews,
+    getPublicViews,
+    getDefaultView,
     reload,
     getView,
   }

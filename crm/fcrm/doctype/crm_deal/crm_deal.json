@@ -112,8 +112,7 @@
   {
    "fieldname": "contacts_tab",
    "fieldtype": "Tab Break",
-   "label": "Contacts",
-   "read_only": 1
+   "label": "Contacts"
   },
   {
    "fieldname": "email",
@@ -275,7 +274,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-01-19 17:13:41.931398",
+ "modified": "2024-01-25 21:00:08.216020",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM Deal",
@@ -290,7 +289,19 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "System Manager",
+   "role": "Sales User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
    "share": 1,
    "write": 1
   }

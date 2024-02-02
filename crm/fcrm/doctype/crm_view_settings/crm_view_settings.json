@@ -7,10 +7,14 @@
  "field_order": [
   "label",
   "user",
+  "user_list",
   "column_break_zacm",
   "dt",
   "route_name",
   "pinned",
+  "public",
+  "default",
+  "is_view",
   "columns_tab",
   "load_default_columns",
   "columns",
@@ -27,6 +31,7 @@
    "label": "Columns"
   },
   {
+   "depends_on": "eval: doc.public == false",
    "fieldname": "user",
    "fieldtype": "Link",
    "label": "User",
@@ -97,11 +102,35 @@
    "fieldname": "load_default_columns",
    "fieldtype": "Check",
    "label": "Load Default Columns"
+  },
+  {
+   "default": "0",
+   "fieldname": "public",
+   "fieldtype": "Check",
+   "label": "Public"
+  },
+  {
+   "default": "0",
+   "fieldname": "default",
+   "fieldtype": "Check",
+   "label": "Default"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_view",
+   "fieldtype": "Check",
+   "label": "Is View"
+  },
+  {
+   "depends_on": "eval: doc.public == true",
+   "fieldname": "user_list",
+   "fieldtype": "Text",
+   "label": "User List"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-01-03 16:54:52.195687",
+ "modified": "2024-01-22 21:44:41.733977",
  "modified_by": "Administrator",
  "module": "FCRM",
  "name": "CRM View Settings",
@@ -116,7 +145,19 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "System Manager",
+   "role": "Sales User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
    "share": 1,
    "write": 1
   }
