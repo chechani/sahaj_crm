@@ -9,7 +9,6 @@ export default defineConfig({
     frappeui(),
     vue({
       script: {
-        defineModel: true,
         propsDestructure: true,
       },
     }),
@@ -33,6 +32,7 @@ export default defineConfig({
       'showdown',
       'tailwind.config.js',
       'engine.io-client',
+      'prosemirror-state',
     ],
   },
 })

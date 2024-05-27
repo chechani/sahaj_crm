@@ -5,7 +5,7 @@
         <div class="mb-5 flex items-center justify-between">
           <div>
             <h3 class="text-2xl font-semibold leading-6 text-gray-900">
-              {{ dialogOptions.title || 'Untitled' }}
+              {{ __(dialogOptions.title) || __('Untitled') }}
             </h3>
           </div>
           <div class="flex items-center gap-1">
@@ -35,77 +35,7 @@
               <div>{{ field.value }}</div>
             </div>
           </div>
-          <div v-else>
-            <div class="flex flex-col gap-4">
-              <FormControl
-                type="text"
-                ref="title"
-                size="md"
-                label="Organization Name"
-                variant="outline"
-                v-model="_organization.organization_name"
-                placeholder="Add Organization Name"
-              />
-              <div class="flex gap-4">
-                <FormControl
-                  class="flex-1"
-                  type="text"
-                  size="md"
-                  label="Website"
-                  variant="outline"
-                  v-model="_organization.website"
-                  placeholder="Add Website"
-                />
-                <FormControl
-                  class="flex-1"
-                  type="text"
-                  size="md"
-                  label="Annual Revenue"
-                  variant="outline"
-                  v-model="_organization.annual_revenue"
-                  placeholder="Add Annual Revenue"
-                />
-              </div>
-              <Link
-                class="flex-1"
-                size="md"
-                label="Territory"
-                variant="outline"
-                v-model="_organization.territory"
-                doctype="CRM Territory"
-                placeholder="Add Territory"
-              />
-              <div class="flex gap-4">
-                <FormControl
-                  class="flex-1"
-                  type="select"
-                  :options="[
-                    '1-10',
-                    '11-50',
-                    '51-200',
-                    '201-500',
-                    '501-1000',
-                    '1001-5000',
-                    '5001-10000',
-                    '10001+',
-                  ]"
-                  size="md"
-                  label="No. of Employees"
-                  variant="outline"
-                  v-model="_organization.no_of_employees"
-                />
-                <Link
-                  class="flex-1"
-                  size="md"
-                  label="Industry"
-                  variant="outline"
-                  v-model="_organization.industry"
-                  doctype="CRM Industry"
-                  placeholder="Add Industry"
-                />
-              </div>
-            </div>
-          </div>
+          <Fields v-else :sections="sections" :data="_organization" />
         </div>
       </div>
       <div v-if="!detailMode" class="px-4 pb-7 pt-4 sm:px-6">
@@ -115,9 +45,9 @@
             v-for="action in dialogOptions.actions"
             :key="action.label"
             v-bind="action"
-          >
-            {{ action.label }}
-          </Button>
+            :label="__(action.label)"
+            :loading="loading"
+          />
         </div>
       </div>
     </template>
@@ -125,21 +55,16 @@
 </template>
 
 <script setup>
+import Fields from '@/components/Fields.vue'
 import EditIcon from '@/components/Icons/EditIcon.vue'
 import WebsiteIcon from '@/components/Icons/WebsiteIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
 import TerritoryIcon from '@/components/Icons/TerritoryIcon.vue'
-import Link from '@/components/Controls/Link.vue'
-import { organizationsStore } from '@/stores/organizations'
 import { call, FeatherIcon } from 'frappe-ui'
-import { ref, defineModel, nextTick, watch, computed, h } from 'vue'
+import { ref, nextTick, watch, computed, h } from 'vue'
 import { useRouter } from 'vue-router'
 
 const props = defineProps({
-  organization: {
-    type: Object,
-    default: {},
-  },
   options: {
     type: Object,
     default: {
@@ -152,8 +77,9 @@ const props = defineProps({
 
 const router = useRouter()
 const show = defineModel()
-const { organizations } = organizationsStore()
+const organization = defineModel('organization')
 
+const loading = ref(false)
 const title = ref(null)
 const detailMode = ref(false)
 const editMode = ref(false)
@@ -165,13 +91,15 @@ let _organization = ref({
   industry: '',
 })
 
+let doc = ref({})
+
 async function updateOrganization() {
-  const old = { ...props.organization }
+  const old = { ...doc.value }
   const newOrg = { ..._organization.value }
 
-  const nameChanged = old.name !== newOrg.name
-  delete old.name
-  delete newOrg.name
+  const nameChanged = old.organization_name !== newOrg.organization_name
+  delete old.organization_name
+  delete newOrg.organization_name
 
   const otherFieldChanged = JSON.stringify(old) !== JSON.stringify(newOrg)
   const values = newOrg
@@ -182,21 +110,23 @@ async function updateOrganization() {
   }
 
   let name
+  loading.value = true
   if (nameChanged) {
     name = await callRenameDoc()
   }
   if (otherFieldChanged) {
     name = await callSetValue(values)
   }
-  handleOrganizationUpdate({ name })
+  handleOrganizationUpdate({ name }, nameChanged)
 }
 
 async function callRenameDoc() {
   const d = await call('frappe.client.rename_doc', {
     doctype: 'CRM Organization',
-    old_name: props.organization.name,
-    new_name: _organization.value.name,
+    old_name: doc.value?.organization_name,
+    new_name: _organization.value.organization_name,
   })
+  loading.value = false
   return d
 }
 
@@ -206,6 +136,7 @@ async function callSetValue(values) {
     name: _organization.value.name,
     fieldname: values,
   })
+  loading.value = false
   return d.name
 }
 
@@ -216,16 +147,18 @@ async function callInsertDoc() {
       ..._organization.value,
     },
   })
+  loading.value = false
   doc.name && handleOrganizationUpdate(doc)
 }
 
-function handleOrganizationUpdate(doc) {
-  organizations.reload()
-  if (doc.name && props.options.redirect) {
+function handleOrganizationUpdate(doc, renamed = false) {
+  if (doc.name && (props.options.redirect || renamed)) {
     router.push({
       name: 'Organization',
       params: { organizationId: doc.name },
     })
+  } else {
+    organization.value.reload?.()
   }
   show.value = false
   props.options.afterInsert && props.options.afterInsert(doc)
@@ -233,14 +166,14 @@ function handleOrganizationUpdate(doc) {
 
 const dialogOptions = computed(() => {
   let title = !editMode.value
-    ? 'New Organization'
-    : _organization.value.organization_name
+    ? __('New Organization')
+    : __(_organization.value.organization_name)
   let size = detailMode.value ? '' : 'xl'
   let actions = detailMode.value
     ? []
     : [
         {
-          label: editMode.value ? 'Save' : 'Create',
+          label: editMode.value ? __('Save') : __('Create'),
           variant: 'solid',
           onClick: () =>
             editMode.value ? updateOrganization() : callInsertDoc(),
@@ -287,6 +220,85 @@ const fields = computed(() => {
   return details.filter((field) => field.value)
 })
 
+const sections = computed(() => {
+  return [
+    {
+      section: 'Organization Name',
+      columns: 1,
+      fields: [
+        {
+          label: 'Organization Name',
+          name: 'organization_name',
+          type: 'data',
+          placeholder: 'Frappé Technologies',
+        },
+      ],
+    },
+    {
+      section: 'Website & Revenue',
+      columns: 2,
+      hideBorder: true,
+      fields: [
+        {
+          label: 'Website',
+          name: 'website',
+          type: 'data',
+          placeholder: 'https://example.com',
+        },
+        {
+          label: 'Annual Revenue',
+          name: 'annual_revenue',
+          type: 'data',
+          placeholder: '9,999,999',
+        },
+      ],
+    },
+    {
+      section: 'Territory',
+      columns: 1,
+      hideBorder: true,
+      fields: [
+        {
+          label: 'Territory',
+          name: 'territory',
+          type: 'link',
+          doctype: 'CRM Territory',
+          placeholder: 'India',
+        },
+      ],
+    },
+    {
+      section: 'No of Employees & Industry',
+      columns: 2,
+      hideBorder: true,
+      fields: [
+        {
+          label: 'No of Employees',
+          name: 'no_of_employees',
+          type: 'select',
+          options: [
+            { label: __('1-10'), value: '1-10' },
+            { label: __('11-50'), value: '11-50' },
+            { label: __('51-200'), value: '51-200' },
+            { label: __('201-500'), value: '201-500' },
+            { label: __('501-1000'), value: '501-1000' },
+            { label: __('1001-5000'), value: '1001-5000' },
+            { label: __('5001-10000'), value: '5001-10000' },
+            { label: __('10001+'), value: '10001+' },
+          ],
+        },
+        {
+          label: 'Industry',
+          name: 'industry',
+          type: 'link',
+          doctype: 'CRM Industry',
+          placeholder: 'Technology',
+        },
+      ],
+    },
+  ]
+})
+
 watch(
   () => show.value,
   (value) => {
@@ -296,7 +308,8 @@ watch(
     nextTick(() => {
       // TODO: Issue with FormControl
       // title.value.el.focus()
-      _organization.value = { ...props.organization }
+      doc.value = organization.value?.doc || organization.value || {}
+      _organization.value = { ...doc.value }
       if (_organization.value.name) {
         editMode.value = true
       }

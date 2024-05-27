@@ -5,21 +5,19 @@
       :key="s.label"
       class="flex items-center gap-2 text-base leading-5"
     >
-      <div class="w-[106px] text-sm text-gray-600">{{ s.label }}</div>
+      <div class="w-[106px] text-sm text-gray-600">{{ __(s.label) }}</div>
       <div class="grid min-h-[28px] items-center">
-        <Tooltip
-          v-if="s.tooltipText"
-          :text="s.tooltipText"
-          class="ml-2 cursor-pointer"
-        >
-          <Badge
-            v-if="s.type == 'Badge'"
-            class="-ml-1"
-            :label="s.value"
-            variant="subtle"
-            :theme="s.color"
-          />
-          <div v-else>{{ s.value }}</div>
+        <Tooltip v-if="s.tooltipText" :text="__(s.tooltipText)">
+          <div class="ml-2 cursor-pointer">
+            <Badge
+              v-if="s.type == 'Badge'"
+              class="-ml-1"
+              :label="s.value"
+              variant="subtle"
+              :theme="s.color"
+            />
+            <div v-else>{{ s.value }}</div>
+          </div>
         </Tooltip>
         <Dropdown
           class="form-control"
@@ -71,12 +69,12 @@ let slaSection = computed(() => {
     tooltipText = dateFormat(data.value.response_by, dateTooltipFormat)
     if (new Date(data.value.response_by) < new Date()) {
       color = 'red'
-      if (status == 'In less than a minute') {
+      if (status == __('In less than a minute')) {
         status = 'less than a minute ago'
       }
     }
-  } else if (["Fulfilled", "Failed"].includes(status)) {
-    status = status + " in " + formatTime(data.value.first_response_time)
+  } else if (['Fulfilled', 'Failed'].includes(status)) {
+    status = __(status) + ' in ' + formatTime(data.value.first_response_time)
     tooltipText = dateFormat(data.value.first_responded_on, dateTooltipFormat)
   }
 
@@ -85,7 +83,7 @@ let slaSection = computed(() => {
       {
         label: 'First Response',
         type: 'Badge',
-        value: status,
+        value: __(status),
         tooltipText: tooltipText,
         color: color,
       },

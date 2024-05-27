@@ -1,7 +1,7 @@
 <template>
   <div
     class="relative flex h-full flex-col justify-between transition-all duration-300 ease-in-out"
-    :class="isSidebarCollapsed ? 'w-12' : 'w-56'"
+    :class="isSidebarCollapsed ? 'w-12' : 'w-[220px]'"
   >
     <div>
       <UserDropdown class="p-2" :isCollapsed="isSidebarCollapsed" />
@@ -10,7 +10,7 @@
       <div class="mb-3 flex flex-col">
         <SidebarLink
           id="notifications-btn"
-          label="Notifications"
+          :label="__('Notifications')"
           :icon="NotificationsIcon"
           :isCollapsed="isSidebarCollapsed"
           @click="() => toggleNotificationPanel()"
@@ -27,7 +27,7 @@
             />
             <div
               v-else-if="notificationsStore().unreadNotificationsCount"
-              class="absolute z-20 top-1 -left-1.5 h-[5px] w-[5px] ring-1 ring-white translate-x-6 translate-y-1 rounded-full bg-gray-800"
+              class="absolute -left-1.5 top-1 z-20 h-[5px] w-[5px] translate-x-6 translate-y-1 rounded-full bg-gray-800 ring-1 ring-white"
             />
           </template>
         </SidebarLink>
@@ -45,7 +45,7 @@
           <template #header="{ opened, hide, toggle }">
             <div
               v-if="!hide"
-              class="flex cursor-pointer gap-1.5 px-1 text-sm font-medium text-gray-600 transition-all duration-300 ease-in-out"
+              class="flex cursor-pointer gap-1.5 px-1 text-base font-medium text-gray-600 transition-all duration-300 ease-in-out"
               :class="
                 isSidebarCollapsed
                   ? 'ml-0 h-0 overflow-hidden opacity-0'
@@ -58,16 +58,14 @@
                 class="h-4 text-gray-900 transition-all duration-300 ease-in-out"
                 :class="{ 'rotate-90': opened }"
               />
-              <span class="uppercase">
-                {{ view.name }}
-              </span>
+              <span>{{ __(view.name) }}</span>
             </div>
           </template>
           <nav class="flex flex-col">
             <SidebarLink
               v-for="link in view.views"
               :icon="link.icon"
-              :label="link.label"
+              :label="__(link.label)"
               :to="link.to"
               :isCollapsed="isSidebarCollapsed"
               class="mx-2 my-0.5"
@@ -76,21 +74,23 @@
         </Section>
       </div>
     </div>
-    <SidebarLink
-      :label="isSidebarCollapsed ? 'Expand' : 'Collapse'"
-      :isCollapsed="isSidebarCollapsed"
-      @click="isSidebarCollapsed = !isSidebarCollapsed"
-      class="m-2"
-    >
-      <template #icon>
-        <span class="grid h-5 w-6 flex-shrink-0 place-items-center">
-          <CollapseSidebar
-            class="h-4.5 w-4.5 text-gray-700 duration-300 ease-in-out"
-            :class="{ '[transform:rotateY(180deg)]': isSidebarCollapsed }"
-          />
-        </span>
-      </template>
-    </SidebarLink>
+    <div class="m-2 flex flex-col gap-1">
+      <SidebarLink
+        :label="isSidebarCollapsed ? __('Expand') : __('Collapse')"
+        :isCollapsed="isSidebarCollapsed"
+        @click="isSidebarCollapsed = !isSidebarCollapsed"
+        class=""
+      >
+        <template #icon>
+          <span class="grid h-4.5 w-4.5 flex-shrink-0 place-items-center">
+            <CollapseSidebar
+              class="h-4.5 w-4.5 text-gray-700 duration-300 ease-in-out"
+              :class="{ '[transform:rotateY(180deg)]': isSidebarCollapsed }"
+            />
+          </span>
+        </template>
+      </SidebarLink>
+    </div>
     <Notifications />
   </div>
 </template>
@@ -105,6 +105,7 @@ import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import OrganizationsIcon from '@/components/Icons/OrganizationsIcon.vue'
 import NoteIcon from '@/components/Icons/NoteIcon.vue'
+import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import PhoneIcon from '@/components/Icons/PhoneIcon.vue'
 import CollapseSidebar from '@/components/Icons/CollapseSidebar.vue'
 import NotificationsIcon from '@/components/Icons/NotificationsIcon.vue'
@@ -112,8 +113,9 @@ import SidebarLink from '@/components/SidebarLink.vue'
 import Notifications from '@/components/Notifications.vue'
 import { viewsStore } from '@/stores/views'
 import { notificationsStore } from '@/stores/notifications'
+import { FeatherIcon } from 'frappe-ui'
 import { useStorage } from '@vueuse/core'
-import { computed } from 'vue'
+import { computed, h } from 'vue'
 
 const { getPinnedViews, getPublicViews } = viewsStore()
 const { toggle: toggleNotificationPanel } = notificationsStore()
@@ -147,6 +149,11 @@ const links = [
     to: 'Notes',
   },
   {
+    label: 'Tasks',
+    icon: TaskIcon,
+    to: 'Tasks',
+  },
+  {
     label: 'Call Logs',
     icon: PhoneIcon,
     to: 'Call Logs',
@@ -159,31 +166,37 @@ const links = [
 ]
 
 const allViews = computed(() => {
-  return [
+  let _views = [
     {
       name: 'All Views',
       hideLabel: true,
       opened: true,
       views: links,
     },
-    {
+  ]
+  if (getPublicViews().length) {
+    _views.push({
       name: 'Public views',
       opened: true,
       views: parseView(getPublicViews()),
-    },
-    {
+    })
+  }
+
+  if (getPinnedViews().length) {
+    _views.push({
       name: 'Pinned views',
       opened: true,
       views: parseView(getPinnedViews()),
-    },
-  ]
+    })
+  }
+  return _views
 })
 
 function parseView(views) {
   return views.map((view) => {
     return {
       label: view.label,
-      icon: getIcon(view.route_name),
+      icon: getIcon(view.route_name, view.icon),
       to: {
         name: view.route_name,
         query: { view: view.name },
@@ -192,7 +205,9 @@ function parseView(views) {
   })
 }
 
-function getIcon(routeName) {
+function getIcon(routeName, icon) {
+  if (icon) return h('div', { class: 'size-auto' }, icon)
+
   switch (routeName) {
     case 'Leads':
       return LeadsIcon

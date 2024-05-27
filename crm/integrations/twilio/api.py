@@ -88,8 +88,8 @@ def update_call_log(call_sid, status=None):
 	call_log.start_time = get_datetime_from_timestamp(call_details.start_time)
 	call_log.end_time = get_datetime_from_timestamp(call_details.end_time)
 	if call_log.note and call_log.reference_docname:
-		frappe.db.set_value("CRM Note", call_log.note, "reference_doctype", call_log.reference_doctype)
-		frappe.db.set_value("CRM Note", call_log.note, "reference_docname", call_log.reference_docname)
+		frappe.db.set_value("FCRM Note", call_log.note, "reference_doctype", call_log.reference_doctype)
+		frappe.db.set_value("FCRM Note", call_log.note, "reference_docname", call_log.reference_docname)
 	call_log.flags.ignore_permissions = True
 	call_log.save()
 	frappe.db.commit()
@@ -157,24 +157,26 @@ def get_lead_or_deal_from_number(call):
 	"""Get lead/deal from the given number.
 	"""
 
-	def find_record(doctype, mobile_no):
+	def find_record(doctype, mobile_no, where=''):
 		mobile_no = parse_mobile_no(mobile_no)
-		data = frappe.db.sql(
-			"""
-				SELECT name, mobile_no
-				FROM `tab{doctype}`
-				WHERE CONCAT('+', REGEXP_REPLACE(mobile_no, '[^0-9]', '')) = {mobile_no}
-			""".format(doctype=doctype, mobile_no=mobile_no),
-			as_dict=True
-		)
+		
+		query = f"""
+			SELECT name, mobile_no
+			FROM `tab{doctype}`
+			WHERE CONCAT('+', REGEXP_REPLACE(mobile_no, '[^0-9]', '')) = {mobile_no}
+		"""
+
+		data = frappe.db.sql(query + where, as_dict=True)
 		return data[0].name if data else None
 
-	doctype = "CRM Lead"
+	doctype = "CRM Deal"
 	number = call.get('to') if call.type == 'Outgoing' else call.get('from')
 
 	doc = find_record(doctype, number) or None
 	if not doc:
-		doctype = "CRM Deal"
-		doc = find_record(doctype, number)
+		doctype = "CRM Lead"
+		doc = find_record(doctype, number, 'AND converted is not True')
+		if not doc:
+			doc = find_record(doctype, number)
 
 	return doc, doctype

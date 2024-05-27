@@ -1,9 +1,11 @@
 import frappe
+from frappe import _
 from frappe.model.document import get_controller
 from frappe.model import no_value_fields
 from pypika import Criterion
 
 from crm.api.views import get_views
+from crm.fcrm.doctype.crm_form_script.crm_form_script import get_form_script
 
 
 @frappe.whitelist()
@@ -12,7 +14,7 @@ def sort_options(doctype: str):
 	fields = [field for field in fields if field.fieldtype not in no_value_fields]
 	fields = [
 		{
-			"label": field.label,
+			"label": _(field.label),
 			"value": field.fieldname,
 		}
 		for field in fields
@@ -28,6 +30,7 @@ def sort_options(doctype: str):
 	]
 
 	for field in standard_fields:
+		field["label"] = _(field["label"])
 		fields.append(field)
 
 	return fields
@@ -41,6 +44,7 @@ def get_filterable_fields(doctype: str):
 		"Float",
 		"Int",
 		"Currency",
+		"Dynamic Link",
 		"Link",
 		"Long Text",
 		"Select",
@@ -99,6 +103,9 @@ def get_filterable_fields(doctype: str):
 			field["name"] = field.get("fieldname")
 			res.append(field)
 
+	for field in res:
+		field["label"] = _(field.get("label"))
+
 	return res
 
 def get_fields_meta(DocField, doctype, allowed_fieldtypes, restricted_fields):
@@ -118,6 +125,30 @@ def get_fields_meta(DocField, doctype, allowed_fieldtypes, restricted_fields):
 		.where(Criterion.all([DocField.fieldname != i for i in restricted_fields]))
 		.run(as_dict=True)
 	)
+
+@frappe.whitelist()
+def get_quick_filters(doctype: str):
+	meta = frappe.get_meta(doctype)
+	fields = [field for field in meta.fields if field.in_standard_filter]
+	quick_filters = []
+
+	for field in fields:
+
+		if field.fieldtype == "Select":
+			field.options = field.options.split("\n")
+			field.options = [{"label": option, "value": option} for option in field.options]
+			field.options.insert(0, {"label": "", "value": ""})
+		quick_filters.append({
+			"label": _(field.label),
+			"name": field.fieldname,
+			"type": field.fieldtype,
+			"options": field.options,
+		})
+
+	if doctype == "CRM Lead":
+		quick_filters = [filter for filter in quick_filters if filter.get("name") != "converted"]
+
+	return quick_filters
 
 @frappe.whitelist()
 def get_list_data(
@@ -182,8 +213,12 @@ def get_list_data(
 	for column in columns:
 		if column.get("key") not in rows:
 			rows.append(column.get("key"))
+		column["label"] = _(column.get("label"))
 
-	data = frappe.get_all(
+		if column.get("key") == "_liked_by" and column.get("width") == "10rem":
+			column["width"] = "50px"
+
+	data = frappe.get_list(
 		doctype,
 		fields=rows,
 		filters=filters,
@@ -195,7 +230,7 @@ def get_list_data(
 	fields = [field for field in fields if field.fieldtype not in no_value_fields]
 	fields = [
 		{
-			"label": field.label,
+			"label": _(field.label),
 			"type": field.fieldtype,
 			"value": field.fieldname,
 			"options": field.options,
@@ -216,12 +251,14 @@ def get_list_data(
 		},
 		{"label": "Assigned To", "type": "Text", "value": "_assign"},
 		{"label": "Owner", "type": "Link", "value": "owner", "options": "User"},
+		{"label": "Liked By", "type": "Data", "value": "_liked_by"},
 	]
 
 	for field in std_fields:
 		if field.get('value') not in rows:
 			rows.append(field.get('value'))
 		if field not in fields:
+			field["label"] = _(field["label"])
 			fields.append(field)
 
 	if not is_default and custom_view_name:
@@ -235,13 +272,15 @@ def get_list_data(
 		"page_length": page_length,
 		"page_length_count": page_length_count,
 		"is_default": is_default,
-		"views": get_views(doctype, is_view=True),
-		"total_count": frappe.client.get_count(doctype, filters=filters),
+		"views": get_views(doctype),
+		"total_count": len(frappe.get_list(doctype, filters=filters)),
 		"row_count": len(data),
+		"form_script": get_form_script(doctype),
+		"list_script": get_form_script(doctype, "List"),
 	}
 
 
-def get_doctype_fields(doctype):
+def get_doctype_fields(doctype, name):
 	not_allowed_fieldtypes = [
 		"Section Break",
 		"Column Break",
@@ -253,6 +292,12 @@ def get_doctype_fields(doctype):
 	sections = {}
 	section_fields = []
 	last_section = None
+	doc = frappe.get_cached_doc(doctype, name)
+
+	has_high_permlevel_fields = any(df.permlevel > 0 for df in fields)
+	if has_high_permlevel_fields:
+		has_read_access_to_permlevels = doc.get_permlevel_access("read")
+		has_write_access_to_permlevels = doc.get_permlevel_access("write")
 
 	for field in fields:
 		if field.fieldtype == "Tab Break" and last_section:
@@ -274,6 +319,13 @@ def get_doctype_fields(doctype):
 				"fields": [],
 			}
 		else:
+			if field.permlevel > 0:
+				field_has_write_access = field.permlevel in has_write_access_to_permlevels
+				field_has_read_access = field.permlevel in has_read_access_to_permlevels
+				if not field_has_write_access and field_has_read_access:
+					field.read_only = 1
+				if not field_has_read_access and not field_has_write_access:
+					field.hidden = 1
 			section_fields.append(get_field_obj(field))
 
 	section_fields = []
@@ -296,6 +348,7 @@ def get_field_obj(field):
 		"hidden": field.hidden,
 		"reqd": field.reqd,
 		"read_only": field.read_only,
+		"all_properties": field,
 	}
 
 	obj["placeholder"] = "Add " + field.label + "..."
@@ -327,7 +380,7 @@ def get_type(field):
 		return "read_only"
 	return field.fieldtype.lower()
 
-def get_assigned_users(doctype, name):
+def get_assigned_users(doctype, name, default_assigned_to=None):
 	assigned_users = frappe.get_all(
 		"ToDo",
 		fields=["allocated_to"],
@@ -339,4 +392,34 @@ def get_assigned_users(doctype, name):
 		pluck="allocated_to",
 	)
 
-	return list(set(assigned_users))
+	users = list(set(assigned_users))
+
+	# if users is empty, add default_assigned_to
+	if not users and default_assigned_to:
+		users = [default_assigned_to]
+	return users
+
+
+@frappe.whitelist()
+def get_fields(doctype: str):
+	not_allowed_fieldtypes = list(frappe.model.no_value_fields) + ["Read Only"]
+	fields = frappe.get_meta(doctype).fields
+
+	_fields = []
+
+	for field in fields:
+		if (
+			field.fieldtype not in not_allowed_fieldtypes
+			and not field.hidden
+			and not field.read_only
+			and not field.is_virtual
+			and field.fieldname
+		):
+			_fields.append({
+				"label": field.label,
+				"type": field.fieldtype,
+				"value": field.fieldname,
+				"options": field.options,
+			})
+
+	return _fields

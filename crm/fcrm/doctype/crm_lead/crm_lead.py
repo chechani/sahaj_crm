@@ -22,6 +22,7 @@ class CRMLead(Document):
 		self.set_title()
 		self.validate_email()
 		if self.lead_owner and not self.is_new():
+			self.share_with_agent(self.lead_owner)
 			self.assign_agent(self.lead_owner)
 		if self.has_value_changed("status"):
 			add_status_change_log(self)
@@ -77,6 +78,26 @@ class CRMLead(Document):
 					return
 
 		assign({"assign_to": [agent], "doctype": "CRM Lead", "name": self.name})
+
+	def share_with_agent(self, agent):
+		if not agent:
+			return
+
+		docshares = frappe.get_all(
+			"DocShare",
+			filters={"share_name": self.name, "share_doctype": self.doctype},
+			fields=["name", "user"],
+		)
+
+		shared_with = [d.user for d in docshares] + [agent]
+
+		for user in shared_with:
+			if user == agent and not frappe.db.exists("DocShare", {"user": agent, "share_name": self.name, "share_doctype": self.doctype}):
+				frappe.share.add_docshare(
+					self.doctype, self.name, agent, write=1, flags={"ignore_share_permission": True}
+				)
+			elif user != agent:
+				frappe.share.remove(self.doctype, self.name, user)
 
 	def create_contact(self, throw=True):
 		if not self.lead_name:
@@ -161,13 +182,33 @@ class CRMLead(Document):
 
 	def create_deal(self, contact, organization):
 		deal = frappe.new_doc("CRM Deal")
+
+		lead_deal_map = {
+			"lead_owner": "deal_owner",
+		}
+
+		restricted_fieldtypes = ["Tab Break", "Section Break", "Column Break", "HTML", "Button", "Attach", "Table"]
+		restricted_map_fields = ["name", "naming_series", "creation", "owner", "modified", "modified_by", "idx", "docstatus", "status", "email", "mobile_no", "phone", "sla", "sla_status", "response_by", "first_response_time", "first_responded_on", "communication_status", "sla_creation"]
+
+		for field in self.meta.fields:
+			if field.fieldtype in restricted_fieldtypes:
+				continue
+			if field.fieldname in restricted_map_fields:
+				continue
+
+			fieldname = field.fieldname
+			if field.fieldname in lead_deal_map:
+				fieldname = lead_deal_map[field.fieldname]
+
+			if hasattr(deal, fieldname):
+				if fieldname == "organization":
+					deal.update({fieldname: organization})
+				else:
+					deal.update({fieldname: self.get(field.fieldname)})
+
 		deal.update(
 			{
 				"lead": self.name,
-				"organization": organization,
-				"deal_owner": self.lead_owner,
-				"source": self.source,
-				"lead_name": self.lead_name,
 				"contacts": [{"contact": contact}],
 			}
 		)
@@ -193,6 +234,8 @@ class CRMLead(Document):
 		"""
 		sla = get_sla(self)
 		if not sla:
+			self.first_responded_on = None
+			self.first_response_time = None
 			return
 		self.sla = sla.name
 
@@ -205,6 +248,9 @@ class CRMLead(Document):
 		sla = frappe.get_last_doc("CRM Service Level Agreement", {"name": self.sla})
 		if sla:
 			sla.apply(self)
+
+	def convert_to_deal(self):
+		return convert_to_deal(lead=self.name, doc=self)
 
 	@staticmethod
 	def get_non_filterable_fields():
@@ -277,8 +323,8 @@ class CRMLead(Document):
 		return {'columns': columns, 'rows': rows}
 
 @frappe.whitelist()
-def convert_to_deal(lead):
-	if not frappe.has_permission("CRM Lead", "write", lead):
+def convert_to_deal(lead, doc=None):
+	if not (doc and doc.flags.get("ignore_permissions")) and not frappe.has_permission("CRM Lead", "write", lead):
 		frappe.throw(_("Not allowed to convert Lead to Deal"), frappe.PermissionError)
 
 	lead = frappe.get_cached_doc("CRM Lead", lead)
@@ -286,9 +332,8 @@ def convert_to_deal(lead):
 	lead.converted = 1
 	if lead.sla:
 		lead.communication_status = 'Replied'
-	lead.save()
+	lead.save(ignore_permissions=True)
 	contact = lead.create_contact(False)
 	organization = lead.create_organization()
 	deal = lead.create_deal(contact, organization)
 	return deal
-

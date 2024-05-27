@@ -1,11 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { usersStore } from '@/stores/users'
 import { sessionStore } from '@/stores/session'
-import { viewsStore } from '@/stores/views'
 
 const routes = [
   {
     path: '/',
+    redirect: { name: 'Leads' },
     name: 'Home',
   },
   {
@@ -15,7 +15,7 @@ const routes = [
     meta: { scrollPos: { top: 0, left: 0 } },
   },
   {
-    path: '/leads/:leadId',
+    path: '/leads/:leadId/:tabName?',
     name: 'Lead',
     component: () => import('@/pages/Lead.vue'),
     props: true,
@@ -27,7 +27,7 @@ const routes = [
     meta: { scrollPos: { top: 0, left: 0 } },
   },
   {
-    path: '/deals/:dealId',
+    path: '/deals/:dealId/:tabName?',
     name: 'Deal',
     component: () => import('@/pages/Deal.vue'),
     props: true,
@@ -36,6 +36,11 @@ const routes = [
     path: '/notes',
     name: 'Notes',
     component: () => import('@/pages/Notes.vue'),
+  },
+  {
+    path: '/tasks',
+    name: 'Tasks',
+    component: () => import('@/pages/Tasks.vue'),
   },
   {
     path: '/contacts',
@@ -66,12 +71,6 @@ const routes = [
     name: 'Call Logs',
     component: () => import('@/pages/CallLogs.vue'),
     meta: { scrollPos: { top: 0, left: 0 } },
-  },
-  {
-    path: '/call-logs/:callLogId',
-    name: 'Call Log',
-    component: () => import('@/pages/CallLog.vue'),
-    props: true,
   },
   {
     path: '/email-templates',
@@ -130,30 +129,14 @@ let router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const { users } = usersStore()
   const { isLoggedIn } = sessionStore()
-  const { views, getDefaultView } = viewsStore()
 
-  await users.promise
-  await views.promise
+  isLoggedIn && (await users.promise)
 
   if (from.meta?.scrollPos) {
     from.meta.scrollPos.top = document.querySelector('#list-rows')?.scrollTop
   }
 
-  if (to.path === '/') {
-    const defaultView = getDefaultView()
-    if (defaultView?.route_name) {
-      if (defaultView.is_view) {
-        next({
-          name: defaultView.route_name,
-          query: { view: defaultView.name },
-        })
-      } else {
-        next({ name: defaultView.route_name })
-      }
-    } else {
-      next({ name: 'Leads' })
-    }
-  } else if (to.name === 'Login' && isLoggedIn) {
+  if (to.name === 'Login' && isLoggedIn) {
     next({ name: 'Leads' })
   } else if (to.name !== 'Login' && !isLoggedIn) {
     next({ name: 'Login' })

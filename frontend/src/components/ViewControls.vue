@@ -1,11 +1,12 @@
 <template>
-  <div class="flex items-center justify-between px-5 pb-4 pt-3">
+  <div class="flex items-center justify-between gap-2 px-5 py-4">
     <div class="flex items-center gap-2">
       <Dropdown :options="viewsDropdownOptions">
         <template #default="{ open }">
-          <Button :label="currentView.label">
+          <Button :label="__(currentView.label)">
             <template #prefix>
-              <FeatherIcon :name="currentView.icon" class="h-4" />
+              <div v-if="isEmoji(currentView.icon)">{{ currentView.icon }}</div>
+              <FeatherIcon v-else :name="currentView.icon" class="h-4" />
             </template>
             <template #suffix>
               <FeatherIcon
@@ -18,24 +19,76 @@
       </Dropdown>
       <Dropdown :options="viewActions">
         <template #default>
-          <Button>
-            <FeatherIcon name="more-horizontal" class="h-4 w-4" />
-          </Button>
+          <Button icon="more-horizontal" />
         </template>
       </Dropdown>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="-mr-2 h-[70%] border-l" />
+    <FadedScrollableDiv
+      class="flex flex-1 items-center overflow-x-auto px-1"
+      orientation="horizontal"
+    >
       <div
-        v-if="viewUpdated && (!view.public || isManager())"
-        class="flex items-center gap-2 border-r pr-2"
+        v-for="filter in quickFilterList"
+        :key="filter.name"
+        class="m-1 min-w-36"
       >
-        <Button label="Cancel" @click="cancelChanges" />
-        <Button
-          :label="view?.name ? 'Save Changes' : 'Create View'"
-          @click="saveView"
+        <FormControl
+          v-if="filter.type == 'Check'"
+          :label="filter.label"
+          type="checkbox"
+          v-model="filter.value"
+          @change.stop="applyQuickFilter(filter, $event.target.checked)"
+        />
+        <FormControl
+          v-else-if="filter.type === 'Select'"
+          class="form-control cursor-pointer [&_select]:cursor-pointer"
+          type="select"
+          v-model="filter.value"
+          :options="filter.options"
+          :placeholder="filter.label"
+          @change.stop="applyQuickFilter(filter, $event.target.value)"
+        />
+        <Link
+          v-else-if="filter.type === 'Link'"
+          :value="filter.value"
+          :doctype="filter.options"
+          :placeholder="filter.label"
+          @change="(data) => applyQuickFilter(filter, data)"
+        />
+        <component
+          v-else-if="['Date', 'Datetime'].includes(filter.type)"
+          class="border-none"
+          :is="filter.type === 'Date' ? DatePicker : DatetimePicker"
+          :value="filter.value"
+          @change="(v) => applyQuickFilter(filter, v)"
+          :placeholder="filter.label"
+        />
+        <FormControl
+          v-else
+          :value="filter.value"
+          type="text"
+          :placeholder="filter.label"
+          :debounce="500"
+          @change.stop="applyQuickFilter(filter, $event.target.value)"
         />
       </div>
+    </FadedScrollableDiv>
+    <div class="-ml-2 h-[70%] border-l" />
+    <div class="flex items-center gap-2">
+      <div
+        v-if="viewUpdated && route.query.view && (!view.public || isManager())"
+        class="flex items-center gap-2 border-r pr-2"
+      >
+        <Button :label="__('Cancel')" @click="cancelChanges" />
+        <Button :label="__('Save Changes')" @click="saveView" />
+      </div>
       <div class="flex items-center gap-2">
+        <Button :label="__('Refresh')" @click="reload()" :loading="isLoading">
+          <template #icon>
+            <RefreshIcon class="h-4 w-4" />
+          </template>
+        </Button>
         <Filter
           v-model="list"
           :doctype="doctype"
@@ -44,19 +97,38 @@
         />
         <SortBy v-model="list" :doctype="doctype" @update="updateSort" />
         <ColumnSettings
+          v-if="!options.hideColumnsButton"
           v-model="list"
           :doctype="doctype"
           @update="(isDefault) => updateColumns(isDefault)"
         />
-        <Button label="Refresh" @click="reload()" :loading="isLoading">
-          <template #icon>
-            <RefreshIcon class="h-4 w-4" />
+        <Dropdown
+          v-if="!options.hideColumnsButton"
+          :options="[
+            {
+              group: __('Options'),
+              hideLabel: true,
+              items: [
+                {
+                  label: __('Export'),
+                  icon: () =>
+                    h(FeatherIcon, { name: 'download', class: 'h-4 w-4' }),
+                  onClick: () => (showExportDialog = true),
+                },
+              ],
+            },
+          ]"
+        >
+          <template #default>
+            <Button icon="more-horizontal" />
           </template>
-        </Button>
+        </Dropdown>
       </div>
     </div>
   </div>
   <ViewModal
+    v-model="showViewModal"
+    v-model:view="viewModalObj"
     :doctype="doctype"
     :options="{
       afterCreate: async (v) => {
@@ -69,11 +141,52 @@
         reloadView()
       },
     }"
-    v-model:view="view"
-    v-model="showViewModal"
   />
+  <Dialog
+    v-model="showExportDialog"
+    :options="{
+      title: __('Export'),
+      actions: [
+        {
+          label: __('Download'),
+          variant: 'solid',
+          onClick: () => exportRows(),
+        },
+      ],
+    }"
+  >
+    <template #body-content>
+      <FormControl
+        variant="outline"
+        :label="__('Export Type')"
+        type="select"
+        :options="[
+          {
+            label: __('Excel'),
+            value: 'Excel',
+          },
+          {
+            label: __('CSV'),
+            value: 'CSV',
+          },
+        ]"
+        v-model="export_type"
+        :placeholder="__('Excel')"
+      />
+      <div class="mt-3">
+        <FormControl
+          type="checkbox"
+          :label="__('Export All {0} Record(s)', [list.data.total_count])"
+          v-model="export_all"
+        />
+      </div>
+    </template>
+  </Dialog>
 </template>
 <script setup>
+import DatePicker from '@/components/Controls/DatePicker.vue'
+import DatetimePicker from '@/components/Controls/DatetimePicker.vue'
+import Link from '@/components/Controls/Link.vue'
 import RefreshIcon from '@/components/Icons/RefreshIcon.vue'
 import EditIcon from '@/components/Icons/EditIcon.vue'
 import DuplicateIcon from '@/components/Icons/DuplicateIcon.vue'
@@ -82,15 +195,16 @@ import UnpinIcon from '@/components/Icons/UnpinIcon.vue'
 import ViewModal from '@/components/Modals/ViewModal.vue'
 import SortBy from '@/components/SortBy.vue'
 import Filter from '@/components/Filter.vue'
+import FadedScrollableDiv from '@/components/FadedScrollableDiv.vue'
 import ColumnSettings from '@/components/ColumnSettings.vue'
-import { createToast } from '@/utils'
 import { globalStore } from '@/stores/global'
 import { viewsStore } from '@/stores/views'
 import { usersStore } from '@/stores/users'
-import { useDebounceFn } from '@vueuse/core'
+import { isEmoji } from '@/utils'
 import { createResource, Dropdown, call, FeatherIcon } from 'frappe-ui'
-import { computed, ref, defineModel, onMounted, watch, h } from 'vue'
+import { computed, ref, onMounted, watch, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { useDebounceFn } from '@vueuse/core'
 
 const props = defineProps({
   doctype: {
@@ -101,14 +215,23 @@ const props = defineProps({
     type: Object,
     default: {},
   },
+  options: {
+    type: Object,
+    default: {
+      hideColumnsButton: false,
+      defaultViewName: '',
+    },
+  },
 })
 
 const { $dialog } = globalStore()
-const { reload: reloadView, getView, getDefaultView } = viewsStore()
+const { reload: reloadView, getView } = viewsStore()
 const { isManager } = usersStore()
 
 const list = defineModel()
 const loadMore = defineModel('loadMore')
+const resizeColumn = defineModel('resizeColumn')
+const updatedPageCount = defineModel('updatedPageCount')
 
 const route = useRoute()
 const router = useRouter()
@@ -121,7 +244,7 @@ const showViewModal = ref(false)
 const currentView = computed(() => {
   let _view = getView(route.query.view)
   return {
-    label: _view?.label || 'List View',
+    label: _view?.label || props.options?.defaultViewName || 'List View',
     icon: _view?.icon || 'list',
   }
 })
@@ -129,6 +252,7 @@ const currentView = computed(() => {
 const view = ref({
   name: '',
   label: '',
+  icon: '',
   filters: {},
   order_by: 'modified desc',
   columns: '',
@@ -146,16 +270,18 @@ watch(loadMore, (value) => {
   updatePageLength(value, true)
 })
 
-watch(
-  () => list.value?.data?.page_length_count,
-  (value) => {
-    if (!value) return
-    updatePageLength(value)
-  }
-)
+watch(resizeColumn, (value) => {
+  if (!value) return
+  updateColumns()
+})
+
+watch(updatedPageCount, (value) => {
+  if (!value) return
+  updatePageLength(value)
+})
 
 function getParams() {
-  let _view = getView(route.query.view)
+  let _view = getView(route.query.view, props.doctype)
   const filters = (_view?.filters && JSON.parse(_view.filters)) || {}
   const order_by = _view?.order_by || 'modified desc'
   const columns = _view?.columns || ''
@@ -165,6 +291,7 @@ function getParams() {
     view.value = {
       name: _view.name,
       label: _view.label,
+      icon: _view.icon,
       filters: _view.filters,
       order_by: _view.order_by,
       columns: _view.columns,
@@ -178,6 +305,7 @@ function getParams() {
     view.value = {
       name: '',
       label: '',
+      icon: '',
       filters: {},
       order_by: 'modified desc',
       columns: '',
@@ -206,15 +334,21 @@ list.value = createResource({
   url: 'crm.api.doc.get_list_data',
   params: getParams(),
   cache: [props.doctype, route.query.view],
+  transform(data) {
+    return {
+      ...data,
+      params: getParams(),
+    }
+  },
   onSuccess(data) {
     let cv = getView(route.query.view)
-
+    let params = list.value.params ? list.value.params : getParams()
     defaultParams.value = {
       doctype: props.doctype,
-      filters: list.value.params.filters,
-      order_by: list.value.params.order_by,
-      page_length: list.value.params.page_length,
-      page_length_count: list.value.params.page_length_count,
+      filters: params.filters,
+      order_by: params.order_by,
+      page_length: params.page_length,
+      page_length_count: params.page_length_count,
       columns: data.columns,
       rows: data.rows,
       custom_view_name: cv?.name || '',
@@ -223,9 +357,7 @@ list.value = createResource({
   },
 })
 
-onMounted(() => {
-  useDebounceFn(() => reload(), 100)()
-})
+onMounted(() => useDebounceFn(reload, 100)())
 
 const isLoading = computed(() => list.value?.loading)
 
@@ -234,9 +366,28 @@ function reload() {
   list.value.reload()
 }
 
+const showExportDialog = ref(false)
+const export_type = ref('Excel')
+const export_all = ref(false)
+
+async function exportRows() {
+  let fields = JSON.stringify(list.value.data.columns.map((f) => f.key))
+  let filters = JSON.stringify(list.value.params.filters)
+  let order_by = list.value.params.order_by
+  let page_length = list.value.params.page_length
+  if (export_all.value) {
+    page_length = list.value.data.total_count
+  }
+
+  window.location.href = `/api/method/frappe.desk.reportview.export_query?file_format_type=${export_type.value}&title=${props.doctype}&doctype=${props.doctype}&fields=${fields}&filters=${filters}&order_by=${order_by}&page_length=${page_length}&start=0&view=Report&with_comment_count=1`
+  showExportDialog.value = false
+  export_all.value = false
+  export_type.value = 'Excel'
+}
+
 const defaultViews = [
   {
-    label: 'List View',
+    label: __(props.options?.defaultViewName) || __('List View'),
     icon: 'list',
     onClick() {
       viewUpdated.value = false
@@ -245,10 +396,18 @@ const defaultViews = [
   },
 ]
 
+function getIcon(icon) {
+  if (isEmoji(icon)) {
+    return h('div', icon)
+  } else {
+    return icon || 'list'
+  }
+}
+
 const viewsDropdownOptions = computed(() => {
   let _views = [
     {
-      group: 'Default Views',
+      group: __('Default Views'),
       hideLabel: true,
       items: defaultViews,
     },
@@ -256,7 +415,8 @@ const viewsDropdownOptions = computed(() => {
 
   if (list.value?.data?.views) {
     list.value.data.views.forEach((view) => {
-      view.icon = view.icon || 'list'
+      view.label = __(view.label)
+      view.icon = getIcon(view.icon)
       view.filters =
         typeof view.filters == 'string'
           ? JSON.parse(view.filters)
@@ -267,29 +427,76 @@ const viewsDropdownOptions = computed(() => {
       }
     })
     let publicViews = list.value.data.views.filter((v) => v.public)
-    let savedViews = list.value.data.views.filter((v) => !v.pinned && !v.public)
+    let savedViews = list.value.data.views.filter(
+      (v) => !v.pinned && !v.public && !v.is_default
+    )
     let pinnedViews = list.value.data.views.filter((v) => v.pinned)
 
     publicViews.length &&
       _views.push({
-        group: 'Public Views',
+        group: __('Public Views'),
         items: publicViews,
       })
 
     savedViews.length &&
       _views.push({
-        group: 'Saved Views',
+        group: __('Saved Views'),
         items: savedViews,
       })
     pinnedViews.length &&
       _views.push({
-        group: 'Pinned Views',
+        group: __('Pinned Views'),
         items: pinnedViews,
       })
   }
 
   return _views
 })
+
+const quickFilterList = computed(() => {
+  let filters = [{ name: 'name', label: __('ID') }]
+  if (quickFilters.data) {
+    filters.push(...quickFilters.data)
+  }
+
+  filters.forEach((filter) => {
+    filter['value'] = filter.type == 'Check' ? false : ''
+    if (list.value.params?.filters[filter.name]) {
+      let value = list.value.params.filters[filter.name]
+      if (Array.isArray(value)) {
+        filter['value'] = value[1].replace(/%/g, '')
+      } else {
+        filter['value'] = value.replace(/%/g, '')
+      }
+    }
+  })
+
+  return filters
+})
+
+const quickFilters = createResource({
+  url: 'crm.api.doc.get_quick_filters',
+  params: { doctype: props.doctype },
+  cache: ['Quick Filters', props.doctype],
+  auto: true,
+})
+
+function applyQuickFilter(filter, value) {
+  let filters = { ...list.value.params.filters }
+  let field = filter.name
+  if (value) {
+    if (['Check', 'Select', 'Link', 'Date', 'Datetime'].includes(filter.type)) {
+      filters[field] = value
+    } else {
+      filters[field] = ['LIKE', `%${value}%`]
+    }
+    filter['value'] = value
+  } else {
+    delete filters[field]
+    filter['value'] = ''
+  }
+  updateFilter(filters)
+}
 
 function updateFilter(filters) {
   viewUpdated.value = true
@@ -300,6 +507,10 @@ function updateFilter(filters) {
   list.value.params.filters = filters
   view.value.filters = filters
   list.value.reload()
+
+  if (!route.query.view) {
+    create_or_update_default_view()
+  }
 }
 
 function updateSort(order_by) {
@@ -311,9 +522,24 @@ function updateSort(order_by) {
   list.value.params.order_by = order_by
   view.value.order_by = order_by
   list.value.reload()
+
+  if (!route.query.view) {
+    create_or_update_default_view()
+  }
 }
 
 function updateColumns(obj) {
+  if (!obj) {
+    obj = {
+      columns: list.value.data.columns,
+      rows: list.value.data.rows,
+      isDefault: false,
+    }
+  }
+
+  if (!defaultParams.value) {
+    defaultParams.value = getParams()
+  }
   defaultParams.value.columns = view.value.columns = obj.isDefault
     ? ''
     : obj.columns
@@ -330,6 +556,35 @@ function updateColumns(obj) {
     list.value.reload()
   }
   viewUpdated.value = true
+
+  if (!route.query.view) {
+    create_or_update_default_view()
+  }
+}
+
+function create_or_update_default_view() {
+  if (route.query.view) return
+  view.value.doctype = props.doctype
+  call(
+    'crm.fcrm.doctype.crm_view_settings.crm_view_settings.create_or_update_default_view',
+    {
+      view: view.value,
+    }
+  ).then(() => {
+    reloadView()
+    view.value = {
+      label: view.value.label,
+      icon: view.value.icon,
+      name: view.value.name,
+      filters: defaultParams.value.filters,
+      order_by: defaultParams.value.order_by,
+      columns: defaultParams.value.columns,
+      rows: defaultParams.value.rows,
+      route_name: route.name,
+      load_default_columns: view.value.load_default_columns,
+    }
+    viewUpdated.value = false
+  })
 }
 
 function updatePageLength(value, loadMore = false) {
@@ -340,6 +595,11 @@ function updatePageLength(value, loadMore = false) {
   if (loadMore) {
     list.value.params.page_length += list.value.params.page_length_count
   } else {
+    if (
+      value == list.value.params.page_length &&
+      value == list.value.params.page_length_count
+    )
+      return
     list.value.params.page_length = value
     list.value.params.page_length_count = value
   }
@@ -350,11 +610,11 @@ function updatePageLength(value, loadMore = false) {
 const viewActions = computed(() => {
   let actions = [
     {
-      group: 'Default Views',
+      group: __('Default Views'),
       hideLabel: true,
       items: [
         {
-          label: 'Duplicate',
+          label: __('Duplicate'),
           icon: () => h(DuplicateIcon, { class: 'h-4 w-4' }),
           onClick: () => duplicateView(),
         },
@@ -362,38 +622,25 @@ const viewActions = computed(() => {
     },
   ]
 
-  let defaultView = getDefaultView()
-  if (
-    !defaultView ||
-    (route.query.view && route.query.view != defaultView.name) ||
-    (!route.query.view &&
-      (defaultView.route_name != route.name || defaultView.is_view))
-  ) {
-    actions[0].items.push({
-      label: 'Make Default',
-      icon: () => h(FeatherIcon, { name: 'star', class: 'h-4 w-4' }),
-      onClick: () => makeDefault(),
-    })
-  }
-
   if (route.query.view && (!view.value.public || isManager())) {
-    actions[0].items.push(
-      {
-        label: 'Rename',
-        icon: () => h(EditIcon, { class: 'h-4 w-4' }),
-        onClick: () => renameView(),
-      },
-      {
-        label: view.value.pinned ? 'Unpin View' : 'Pin View',
+    actions[0].items.push({
+      label: __('Edit'),
+      icon: () => h(EditIcon, { class: 'h-4 w-4' }),
+      onClick: () => editView(),
+    })
+
+    if (!view.value.public) {
+      actions[0].items.push({
+        label: view.value.pinned ? __('Unpin View') : __('Pin View'),
         icon: () =>
           h(view.value.pinned ? UnpinIcon : PinIcon, { class: 'h-4 w-4' }),
         onClick: () => pinView(),
-      }
-    )
+      })
+    }
 
-    if (route.query.view && isManager()) {
+    if (isManager()) {
       actions[0].items.push({
-        label: view.value.public ? 'Make Private' : 'Make Public',
+        label: view.value.public ? __('Make Private') : __('Make Public'),
         icon: () =>
           h(FeatherIcon, {
             name: view.value.public ? 'lock' : 'unlock',
@@ -404,20 +651,20 @@ const viewActions = computed(() => {
     }
 
     actions.push({
-      group: 'Delete View',
+      group: __('Delete View'),
       hideLabel: true,
       items: [
         {
-          label: 'Delete',
+          label: __('Delete'),
           icon: 'trash-2',
           onClick: () =>
             $dialog({
-              title: 'Delete View',
-              message: 'Are you sure you want to delete this view?',
+              title: __('Delete View'),
+              message: __('Are you sure you want to delete this view?'),
               variant: 'danger',
               actions: [
                 {
-                  label: 'Delete',
+                  label: __('Delete'),
                   variant: 'solid',
                   theme: 'red',
                   onClick: (close) => deleteView(close),
@@ -431,30 +678,22 @@ const viewActions = computed(() => {
   return actions
 })
 
-function makeDefault() {
-  call('crm.fcrm.doctype.crm_view_settings.crm_view_settings.make_default', {
-    name: route.query.view || '',
-    doctype: props.doctype,
-    route_name: route.name,
-  }).then(() => {
-    createToast({
-      title: 'Default View Set',
-      icon: 'check',
-      iconClasses: 'text-green-600',
-    })
-    reloadView()
-  })
-}
+const viewModalObj = ref({})
 
 function duplicateView() {
+  let label = __(getView(route.query.view)?.label) || __('List View')
   view.value.name = ''
-  view.value.label = getView(route.query.view).label + ' New'
+  view.value.label = label + __(' (New)')
+  viewModalObj.value = view.value
   showViewModal.value = true
 }
 
-function renameView() {
+function editView() {
+  let cView = getView(route.query.view)
   view.value.name = route.query.view
-  view.value.label = getView(route.query.view).label
+  view.value.label = __(cView?.label) || __('List View')
+  view.value.icon = cView?.icon || ''
+  viewModalObj.value = view.value
   showViewModal.value = true
 }
 
@@ -496,6 +735,7 @@ function cancelChanges() {
 function saveView() {
   view.value = {
     label: view.value.label,
+    icon: view.value.icon,
     name: view.value.name,
     filters: defaultParams.value.filters,
     order_by: defaultParams.value.order_by,
@@ -504,8 +744,62 @@ function saveView() {
     route_name: route.name,
     load_default_columns: view.value.load_default_columns,
   }
+  viewModalObj.value = view.value
   showViewModal.value = true
 }
+
+function applyFilter({ event, idx, column, item, firstColumn }) {
+  let restrictedFieldtypes = ['Duration', 'Datetime', 'Time']
+  if (restrictedFieldtypes.includes(column.type) || idx === 0) return
+  if (idx === 1 && firstColumn.key == '_liked_by') return
+
+  event.stopPropagation()
+  event.preventDefault()
+
+  let filters = { ...list.value.params.filters }
+
+  let value = item.name || item.label || item
+
+  if (value) {
+    filters[column.key] = value
+  } else {
+    delete filters[column.key]
+  }
+
+  if (column.key == '_assign') {
+    if (item.length > 1) {
+      let target = event.target.closest('.user-avatar')
+      if (target) {
+        let name = target.getAttribute('data-name')
+        filters['_assign'] = ['LIKE', `%${name}%`]
+      }
+    } else {
+      filters['_assign'] = ['LIKE', `%${item[0].name}%`]
+    }
+  }
+  updateFilter(filters)
+}
+
+function applyLikeFilter() {
+  let filters = { ...list.value.params.filters }
+  if (!filters._liked_by) {
+    filters['_liked_by'] = ['LIKE', '%@me%']
+  } else {
+    delete filters['_liked_by']
+  }
+  updateFilter(filters)
+}
+
+function likeDoc({ name, liked }) {
+  createResource({
+    url: 'frappe.desk.like.toggle_like',
+    params: { doctype: props.doctype, name: name, add: liked ? 'No' : 'Yes' },
+    auto: true,
+    onSuccess: () => reload(),
+  })
+}
+
+defineExpose({ applyFilter, applyLikeFilter, likeDoc })
 
 // Watchers
 watch(

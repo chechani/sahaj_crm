@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-1.5">
     <label class="block" :class="labelClasses" v-if="attrs.label">
-      {{ attrs.label }}
+      {{ __(attrs.label) }}
     </label>
     <Autocomplete
       ref="autocomplete"
@@ -28,16 +28,28 @@
         <slot name="item-label" v-bind="{ active, selected, option }" />
       </template>
 
-      <template v-if="attrs.onCreate" #footer="{ value, close }">
-        <div>
+      <template #footer="{ value, close }">
+        <div v-if="attrs.onCreate">
           <Button
             variant="ghost"
             class="w-full !justify-start"
-            label="Create New"
+            :label="__('Create New')"
             @click="attrs.onCreate(value, close)"
           >
             <template #prefix>
               <FeatherIcon name="plus" class="h-4" />
+            </template>
+          </Button>
+        </div>
+        <div>
+          <Button
+            variant="ghost"
+            class="w-full !justify-start"
+            :label="__('Clear')"
+            @click="() => clearValue(close)"
+          >
+            <template #prefix>
+              <FeatherIcon name="x" class="h-4" />
             </template>
           </Button>
         </div>
@@ -129,6 +141,13 @@ const options = createResource({
 })
 
 function reload(val) {
+  if (
+    options.data?.length &&
+    val === options.params?.txt &&
+    props.doctype === options.params?.doctype
+  )
+    return
+
   options.update({
     params: {
       txt: val,
@@ -136,6 +155,11 @@ function reload(val) {
     },
   })
   options.reload()
+}
+
+function clearValue(close) {
+  emit(valuePropPassed.value ? 'change' : 'update:modelValue', '')
+  close()
 }
 
 const labelClasses = computed(() => {

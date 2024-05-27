@@ -1,7 +1,7 @@
 <template>
-  <NestedPopover v-if="options">
+  <NestedPopover>
     <template #target>
-      <Button label="Sort" ref="sortButtonRef">
+      <Button :label="__('Sort')" ref="sortButtonRef">
         <template #prefix><SortIcon class="h-4" /></template>
         <template v-if="sortValues?.size" #suffix>
           <div
@@ -33,15 +33,15 @@
                 :value="sort.fieldname"
                 :options="sortOptions.data"
                 @change="(e) => updateSort(e, i)"
-                placeholder="Sort by"
+                :placeholder="__('First Name')"
               />
               <FormControl
                 class="!w-32"
                 type="select"
-                :value="sort.direction"
+                v-model="sort.direction"
                 :options="[
-                  { label: 'Ascending', value: 'asc' },
-                  { label: 'Descending', value: 'desc' },
+                  { label: __('Ascending'), value: 'asc' },
+                  { label: __('Descending'), value: 'desc' },
                 ]"
                 @change="
                   (e) => {
@@ -49,7 +49,7 @@
                     apply()
                   }
                 "
-                placeholder="Sort by"
+                :placeholder="__('Ascending')"
               />
               <Button variant="ghost" icon="x" @click="removeSort(i)" />
             </div>
@@ -58,13 +58,13 @@
             v-else
             class="mb-3 flex h-7 items-center px-3 text-sm text-gray-600"
           >
-            Empty - Choose a field to sort by
+            {{ __('Empty - Choose a field to sort by') }}
           </div>
           <div class="flex items-center justify-between gap-2">
             <Autocomplete
               :options="options"
               value=""
-              placeholder="Sort by"
+              :placeholder="__('First Name')"
               @change="(e) => setSort(e)"
             >
               <template #target="{ togglePopover }">
@@ -72,7 +72,7 @@
                   class="!text-gray-600"
                   variant="ghost"
                   @click="togglePopover()"
-                  label="Add Sort"
+                  :label="__('Add Sort')"
                 >
                   <template #prefix>
                     <FeatherIcon name="plus" class="h-4" />
@@ -84,7 +84,7 @@
               v-if="sortValues?.size"
               class="!text-gray-600"
               variant="ghost"
-              label="Clear Sort"
+              :label="__('Clear Sort')"
               @click="clearSort(close)"
             />
           </div>
@@ -99,8 +99,9 @@ import NestedPopover from '@/components/NestedPopover.vue'
 import SortIcon from '@/components/Icons/SortIcon.vue'
 import DragIcon from '@/components/Icons/DragIcon.vue'
 import { useSortable } from '@vueuse/integrations/useSortable'
-import { Autocomplete, createResource } from 'frappe-ui'
-import { computed, ref, nextTick } from 'vue'
+import Autocomplete from '@/components/frappe-ui/Autocomplete.vue'
+import { createResource } from 'frappe-ui'
+import { computed, ref, nextTick, onMounted } from 'vue'
 
 const props = defineProps({
   doctype: {
@@ -116,10 +117,15 @@ const sortButtonRef = ref(null)
 
 const sortOptions = createResource({
   url: 'crm.api.doc.sort_options',
-  auto: true,
+  cache: ['sortOptions', props.doctype],
   params: {
     doctype: props.doctype,
   },
+})
+
+onMounted(() => {
+  if (sortOptions.data?.length) return
+  sortOptions.fetch()
 })
 
 const sortValues = computed({

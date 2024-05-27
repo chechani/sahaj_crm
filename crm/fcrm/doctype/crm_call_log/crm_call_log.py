@@ -69,25 +69,13 @@ class CRMCallLog(Document):
 				"duration",
 				"from",
 				"to",
+				"note",
+				"recording_url",
+				"reference_doctype",
+				"reference_docname",
 				"creation",
 			]
 			return {'columns': columns, 'rows': rows}
-
-@frappe.whitelist()
-def get_call_log(name):
-	doc = frappe.get_doc("CRM Call Log", name)
-	doc = doc.as_dict()
-	if doc.lead:
-		doc.lead_name = frappe.db.get_value("CRM Lead", doc.lead, "lead_name")
-	if doc.note:
-		note = frappe.db.get_values("CRM Note", doc.note, ["title", "content"])[0]
-		doc.note_doc = {
-			"name": doc.note,
-			"title": note[0],
-			"content": note[1]
-		}
-
-	return doc
 
 @frappe.whitelist()
 def create_lead_from_call_log(call_log):
@@ -97,9 +85,15 @@ def create_lead_from_call_log(call_log):
 	lead.lead_owner = frappe.session.user
 	lead.save(ignore_permissions=True)
 
-	frappe.db.set_value("CRM Call Log", call_log.get("name"), "lead", lead.name)
+	frappe.db.set_value("CRM Call Log", call_log.get("name"), {
+		"reference_doctype": "CRM Lead",
+		"reference_docname": lead.name
+	})
 
 	if call_log.get("note"):
-		frappe.db.set_value("CRM Note", call_log.get("note"), "lead", lead.name)
+		frappe.db.set_value("FCRM Note", call_log.get("note"), {
+			"reference_doctype": "CRM Lead",
+			"reference_docname": lead.name
+		})
 
 	return lead.name

@@ -4,9 +4,6 @@ from frappe.query_builder import Order
 
 @frappe.whitelist()
 def get_notifications():
-    if frappe.session.user == "Guest":
-        frappe.throw("Authentication failed", exc=frappe.AuthenticationError)
-
     Notification = frappe.qb.DocType("CRM Notification")
     query = (
         frappe.qb.from_(Notification)
@@ -31,13 +28,16 @@ def get_notifications():
                 "to_user": notification.to_user,
                 "read": notification.read,
                 "comment": notification.comment,
-                "reference_doctype": "deal"
-                if notification.reference_doctype == "CRM Deal"
-                else "lead",
+                "notification_text": notification.notification_text,
+                "notification_type_doctype": notification.notification_type_doctype,
+                "notification_type_doc": notification.notification_type_doc,
+                "reference_doctype": (
+                    "deal" if notification.reference_doctype == "CRM Deal" else "lead"
+                ),
                 "reference_name": notification.reference_name,
-                "route_name": "Deal"
-                if notification.reference_doctype == "CRM Deal"
-                else "Lead",
+                "route_name": (
+                    "Deal" if notification.reference_doctype == "CRM Deal" else "Lead"
+                ),
             }
         )
 
@@ -45,15 +45,15 @@ def get_notifications():
 
 
 @frappe.whitelist()
-def mark_as_read(user=None, comment=None):
-    if frappe.session.user == "Guest":
-        frappe.throw("Authentication failed", exc=frappe.AuthenticationError)
-
+def mark_as_read(user=None, doc=None):
     user = user or frappe.session.user
     filters = {"to_user": user, "read": False}
-    if comment:
-        filters["comment"] = comment
-    for n in frappe.get_all("CRM Notification", filters=filters):
+    if doc:
+        or_filters = [
+            {"comment": doc},
+            {"notification_type_doc": doc},
+        ]
+    for n in frappe.get_all("CRM Notification", filters=filters, or_filters=or_filters):
         d = frappe.get_doc("CRM Notification", n.name)
         d.read = True
         d.save()

@@ -5,7 +5,7 @@
         ref="sendEmailRef"
         variant="ghost"
         :class="[showEmailBox ? '!bg-gray-300 hover:!bg-gray-200' : '']"
-        label="Reply"
+        :label="__('Reply')"
         @click="toggleEmailBox()"
       >
         <template #prefix>
@@ -14,7 +14,7 @@
       </Button>
       <Button
         variant="ghost"
-        label="Comment"
+        :label="__('Comment')"
         :class="[showCommentBox ? '!bg-gray-300 hover:!bg-gray-200' : '']"
         @click="toggleCommentBox()"
       >
@@ -25,12 +25,12 @@
     </div>
     <div v-if="showEmailBox" class="flex gap-1.5">
       <Button
-        label="CC"
+        :label="__('CC')"
         @click="toggleCC()"
         :class="[newEmailEditor.cc ? 'bg-gray-300 hover:bg-gray-200' : '']"
       />
       <Button
-        label="BCC"
+        :label="__('BCC')"
         @click="toggleBCC()"
         :class="[newEmailEditor.bcc ? 'bg-gray-300 hover:bg-gray-200' : '']"
       />
@@ -52,6 +52,12 @@
       :discardButtonProps="{
         onClick: () => {
           showEmailBox = false
+          newEmailEditor.subject = subject
+          newEmailEditor.toEmails = doc.data.email ? [doc.data.email] : []
+          newEmailEditor.ccEmails = []
+          newEmailEditor.bccEmails = []
+          newEmailEditor.cc = false
+          newEmailEditor.bcc = false
           newEmail = ''
         },
       }"
@@ -60,7 +66,9 @@
       v-model:attachments="attachments"
       :doctype="doctype"
       :subject="subject"
-      placeholder="Add a reply..."
+      :placeholder="
+        __('Hi John, \n\nCan you please provide more details on this...')
+      "
     />
   </div>
   <div v-show="showCommentBox">
@@ -82,7 +90,7 @@
       v-model="doc.data"
       v-model:attachments="attachments"
       :doctype="doctype"
-      placeholder="Add a comment..."
+      :placeholder="__('@John, can you please check this?')"
     />
   </div>
 </template>
@@ -95,7 +103,7 @@ import EmailIcon from '@/components/Icons/EmailIcon.vue'
 import { usersStore } from '@/stores/users'
 import { useStorage } from '@vueuse/core'
 import { call } from 'frappe-ui'
-import { ref, watch, computed, defineModel, nextTick } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 
 const props = defineProps({
   doctype: {
@@ -159,8 +167,8 @@ const emailEmpty = computed(() => {
 async function sendMail() {
   let recipients = newEmailEditor.value.toEmails
   let subject = newEmailEditor.value.subject
-  let cc = newEmailEditor.value.ccEmails
-  let bcc = newEmailEditor.value.bccEmails
+  let cc = newEmailEditor.value.ccEmails || []
+  let bcc = newEmailEditor.value.bccEmails || []
   await call('frappe.core.doctype.communication.email.make', {
     recipients: recipients.join(', '),
     attachments: attachments.value.map((x) => x.name),
@@ -177,13 +185,19 @@ async function sendMail() {
 }
 
 async function sendComment() {
-  await call('frappe.desk.form.utils.add_comment', {
+  let comment = await call('frappe.desk.form.utils.add_comment', {
     reference_doctype: props.doctype,
     reference_name: doc.value.data.name,
     content: newComment.value,
     comment_email: getUser().name,
     comment_by: getUser()?.full_name || undefined,
   })
+  if (comment && attachments.value.length) {
+    await call('crm.api.comment.add_attachments', {
+      name: comment.name,
+      attachments: attachments.value.map((x) => x.name),
+    })
+  }
 }
 
 async function submitEmail() {
@@ -234,5 +248,5 @@ function toggleCommentBox() {
   showCommentBox.value = !showCommentBox.value
 }
 
-defineExpose({ show: showEmailBox, editor: newEmailEditor })
+defineExpose({ show: showEmailBox, showComment: showCommentBox, editor: newEmailEditor })
 </script>

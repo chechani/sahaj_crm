@@ -1,10 +1,10 @@
 <template>
-  <LayoutHeader v-if="organization">
+  <LayoutHeader v-if="organization.doc">
     <template #left-header>
       <Breadcrumbs :items="breadcrumbs" />
     </template>
   </LayoutHeader>
-  <div v-if="organization" class="flex flex-1 flex-col overflow-hidden">
+  <div v-if="organization.doc" class="flex flex-1 flex-col overflow-hidden">
     <FileUploader
       @success="changeOrganizationImage"
       :validateFile="validateFile"
@@ -14,26 +14,26 @@
           <div class="group relative h-24 w-24">
             <Avatar
               size="3xl"
-              :image="organization.organization_logo"
-              :label="organization.name"
+              :image="organization.doc.organization_logo"
+              :label="organization.doc.name"
               class="!h-24 !w-24"
             />
             <component
-              :is="organization.organization_logo ? Dropdown : 'div'"
+              :is="organization.doc.organization_logo ? Dropdown : 'div'"
               v-bind="
-                organization.organization_logo
+                organization.doc.organization_logo
                   ? {
                       options: [
                         {
                           icon: 'upload',
-                          label: organization.organization_logo
-                            ? 'Change image'
-                            : 'Upload image',
+                          label: organization.doc.organization_logo
+                            ? __('Change image')
+                            : __('Upload image'),
                           onClick: openFileSelector,
                         },
                         {
                           icon: 'trash-2',
-                          label: 'Remove image',
+                          label: __('Remove image'),
                           onClick: () => changeOrganizationImage(''),
                         },
                       ],
@@ -55,70 +55,70 @@
           </div>
           <div class="flex flex-col justify-center gap-0.5">
             <div class="text-3xl font-semibold text-gray-900">
-              {{ organization.name }}
+              {{ organization.doc.name }}
             </div>
             <div class="flex items-center gap-2 text-base text-gray-700">
               <div
-                v-if="organization.website"
+                v-if="organization.doc.website"
                 class="flex items-center gap-1.5"
               >
                 <WebsiteIcon class="h-4 w-4" />
-                <span class="">{{ website(organization.website) }}</span>
+                <span class="">{{ website(organization.doc.website) }}</span>
               </div>
               <span
-                v-if="organization.website"
+                v-if="organization.doc.website"
                 class="text-3xl leading-[0] text-gray-600"
               >
                 &middot;
               </span>
               <div
-                v-if="organization.industry"
+                v-if="organization.doc.industry"
                 class="flex items-center gap-1.5"
               >
                 <FeatherIcon name="briefcase" class="h-4 w-4" />
-                <span class="">{{ organization.industry }}</span>
+                <span class="">{{ organization.doc.industry }}</span>
               </div>
               <span
-                v-if="organization.industry"
+                v-if="organization.doc.industry"
                 class="text-3xl leading-[0] text-gray-600"
               >
                 &middot;
               </span>
               <div
-                v-if="organization.territory"
+                v-if="organization.doc.territory"
                 class="flex items-center gap-1.5"
               >
                 <TerritoryIcon class="h-4 w-4" />
-                <span class="">{{ organization.territory }}</span>
+                <span class="">{{ organization.doc.territory }}</span>
               </div>
               <span
-                v-if="organization.territory"
+                v-if="organization.doc.territory"
                 class="text-3xl leading-[0] text-gray-600"
               >
                 &middot;
               </span>
               <div
-                v-if="organization.annual_revenue"
+                v-if="organization.doc.annual_revenue"
                 class="flex items-center gap-1.5"
               >
                 <FeatherIcon name="dollar-sign" class="h-4 w-4" />
-                <span class="">{{ organization.annual_revenue }}</span>
+                <span class="">{{ organization.doc.annual_revenue }}</span>
               </div>
               <span
-                v-if="organization.annual_revenue"
+                v-if="organization.doc.annual_revenue"
                 class="text-3xl leading-[0] text-gray-600"
               >
                 &middot;
               </span>
               <Button
                 v-if="
-                  organization.website ||
-                  organization.industry ||
-                  organization.territory ||
-                  organization.annual_revenue
+                  organization.doc.website ||
+                  organization.doc.industry ||
+                  organization.doc.territory ||
+                  organization.doc.annual_revenue
                 "
                 variant="ghost"
-                label="More"
+                :label="__('More')"
                 class="-ml-1 cursor-pointer hover:text-gray-900"
                 @click="
                   () => {
@@ -130,7 +130,7 @@
             </div>
             <div class="mt-2 flex gap-1.5">
               <Button
-                label="Edit"
+                :label="__('Edit')"
                 size="sm"
                 @click="
                   () => {
@@ -144,7 +144,7 @@
                 </template>
               </Button>
               <Button
-                label="Delete"
+                :label="__('Delete')"
                 theme="red"
                 size="sm"
                 @click="deleteOrganization"
@@ -154,7 +154,7 @@
                 </template>
               </Button>
             </div>
-            <ErrorMessage class="mt-2" :message="error" />
+            <ErrorMessage class="mt-2" :message="__(error)" />
           </div>
         </div>
       </template>
@@ -166,7 +166,7 @@
           :class="{ 'text-gray-900': selected }"
         >
           <component v-if="tab.icon" :is="tab.icon" class="h-5" />
-          {{ tab.label }}
+          {{ __(tab.label) }}
           <Badge
             class="group-hover:bg-gray-900"
             :class="[selected ? 'bg-gray-900' : 'bg-gray-600']"
@@ -184,14 +184,14 @@
           v-if="tab.label === 'Deals' && rows.length"
           :rows="rows"
           :columns="columns"
-          :options="{ selectable: false }"
+          :options="{ selectable: false, showTooltip: false }"
         />
         <ContactsListView
           class="mt-4"
           v-if="tab.label === 'Contacts' && rows.length"
           :rows="rows"
           :columns="columns"
-          :options="{ selectable: false }"
+          :options="{ selectable: false, showTooltip: false }"
         />
         <div
           v-if="!rows.length"
@@ -199,7 +199,7 @@
         >
           <div class="flex flex-col items-center justify-center space-y-3">
             <component :is="tab.icon" class="!h-10 !w-10" />
-            <div>No {{ tab.label }} Found</div>
+            <div>{{ __('No {0} Found', [__(tab.label)]) }}</div>
           </div>
         </div>
       </template>
@@ -207,7 +207,7 @@
   </div>
   <OrganizationModal
     v-model="showOrganizationModal"
-    :organization="organization"
+    v-model:organization="organization"
     :options="{ detailMode }"
   />
 </template>
@@ -221,6 +221,7 @@ import {
   Tabs,
   call,
   createListResource,
+  createDocumentResource,
 } from 'frappe-ui'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import OrganizationModal from '@/components/Modals/OrganizationModal.vue'
@@ -234,9 +235,7 @@ import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
 import { globalStore } from '@/stores/global'
 import { usersStore } from '@/stores/users'
-import { organizationsStore } from '@/stores/organizations.js'
 import { statusesStore } from '@/stores/statuses'
-import { viewsStore } from '@/stores/views'
 import {
   dateFormat,
   dateTooltipFormat,
@@ -254,23 +253,22 @@ const props = defineProps({
 })
 
 const { $dialog } = globalStore()
-const { organizations, getOrganization } = organizationsStore()
 const { getDealStatus } = statusesStore()
-const { getDefaultView } = viewsStore()
 const showOrganizationModal = ref(false)
 const detailMode = ref(false)
 
 const router = useRouter()
 
-const organization = computed(() => getOrganization(props.organizationId))
+const organization = createDocumentResource({
+  doctype: 'CRM Organization',
+  name: props.organizationId,
+  cache: ['organization', props.organizationId],
+  fields: ['*'],
+  auto: true,
+})
 
 const breadcrumbs = computed(() => {
-  let defaultView = getDefaultView()
-  let route = { name: 'Organizations' }
-  if (defaultView?.route_name == 'Organizations' && defaultView?.is_view) {
-    route = { name: 'Organizations', query: { view: defaultView.name } }
-  }
-  let items = [{ label: 'Organizations', route: route }]
+  let items = [{ label: __('Organizations'), route: { name: 'Organizations' } }]
   items.push({
     label: props.organizationId,
     route: {
@@ -284,7 +282,7 @@ const breadcrumbs = computed(() => {
 function validateFile(file) {
   let extn = file.name.split('.').pop().toLowerCase()
   if (!['png', 'jpg', 'jpeg'].includes(extn)) {
-    return 'Only PNG and JPG images are allowed'
+    return __('Only PNG and JPG images are allowed')
   }
 }
 
@@ -295,16 +293,16 @@ async function changeOrganizationImage(file) {
     fieldname: 'organization_logo',
     value: file?.file_url || '',
   })
-  organizations.reload()
+  organization.reload()
 }
 
 async function deleteOrganization() {
   $dialog({
-    title: 'Delete organization',
-    message: 'Are you sure you want to delete this organization?',
+    title: __('Delete organization'),
+    message: __('Are you sure you want to delete this organization?'),
     actions: [
       {
-        label: 'Delete',
+        label: __('Delete'),
         theme: 'red',
         variant: 'solid',
         async onClick(close) {
@@ -418,7 +416,7 @@ function getDealRowObject(deal) {
     },
     modified: {
       label: dateFormat(deal.modified, dateTooltipFormat),
-      timeAgo: timeAgo(deal.modified),
+      timeAgo: __(timeAgo(deal.modified)),
     },
   }
 }
@@ -439,44 +437,44 @@ function getContactRowObject(contact) {
     },
     modified: {
       label: dateFormat(contact.modified, dateTooltipFormat),
-      timeAgo: timeAgo(contact.modified),
+      timeAgo: __(timeAgo(contact.modified)),
     },
   }
 }
 
 const dealColumns = [
   {
-    label: 'Organization',
+    label: __('Organization'),
     key: 'organization',
     width: '11rem',
   },
   {
-    label: 'Amount',
+    label: __('Amount'),
     key: 'annual_revenue',
     width: '9rem',
   },
   {
-    label: 'Status',
+    label: __('Status'),
     key: 'status',
     width: '10rem',
   },
   {
-    label: 'Email',
+    label: __('Email'),
     key: 'email',
     width: '12rem',
   },
   {
-    label: 'Mobile no',
+    label: __('Mobile no'),
     key: 'mobile_no',
     width: '11rem',
   },
   {
-    label: 'Deal owner',
+    label: __('Deal owner'),
     key: 'deal_owner',
     width: '10rem',
   },
   {
-    label: 'Last modified',
+    label: __('Last modified'),
     key: 'modified',
     width: '8rem',
   },
@@ -484,27 +482,27 @@ const dealColumns = [
 
 const contactColumns = [
   {
-    label: 'Name',
+    label: __('Name'),
     key: 'full_name',
     width: '17rem',
   },
   {
-    label: 'Email',
+    label: __('Email'),
     key: 'email',
     width: '12rem',
   },
   {
-    label: 'Phone',
+    label: __('Phone'),
     key: 'mobile_no',
     width: '12rem',
   },
   {
-    label: 'Organization',
+    label: __('Organization'),
     key: 'company_name',
     width: '12rem',
   },
   {
-    label: 'Last modified',
+    label: __('Last modified'),
     key: 'modified',
     width: '8rem',
   },
